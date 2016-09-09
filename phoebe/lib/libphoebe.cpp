@@ -28,7 +28,8 @@
 #include <vector>
 #include <typeinfo>
 #include <algorithm>
-
+#include <cstring>
+#include <cstdint>
 
 #include "utils.h"                // General routines
 
@@ -176,39 +177,93 @@ int ReadFloatFromTuple(PyObject *p, int len, int start, double *par, bool checks
   
   Python:
     
-    omega = roche_critical_potential(q, F, d)
+    omega = roche_critical_potential(q, F, d, <keywords>=<value>)
   
   where parameters are
+  
+  positionals:
   
     q: float = M2/M1 - mass ratio
     F: float - synchronicity parameter
     d: float - separation between the two objects
   
-  and returns
+  keywords: optional
+    
+    L1: boolean, default true
+      switch calculating value of the potential at L1 
+    L2: boolean, default true
+      switch calculating value of the potential at L2 
+    L3: boolean, default true
+      switch calculating value of the potential at L3 
+    
+  and returns dictionary with keywords:
   
-    omega: 1-rank numpy array of 3 floats
+    L1:
+      float: value of the potential as L1
+    L2:
+      float: value of the potential as L2
+    L3:
+      float: value of the potential as L3
+
 */
 
-static PyObject *roche_critical_potential(PyObject *self, PyObject *args) {
-    
-  // parse input arguments   
+static PyObject *roche_critical_potential(PyObject *self, PyObject *args, PyObject *keywds) {
+  
+  
+  //
+  // Reading arguments
+  //
+  
+  char *kwlist[] = {
+    (char*)"q",
+    (char*)"F",
+    (char*)"d",
+    (char*)"L1",
+    (char*)"L2",
+    (char*)"L3",
+    NULL};
+         
+  bool b_L[3] = {true, true, true};
+     
   double q, F, delta;
   
-  if (!PyArg_ParseTuple(args, "ddd", &q, &F, &delta)) return NULL;
-      
-  // calculate critical potential
-  double *omega = new double[3];
-  gen_roche::critical_potential(omega, q, F, delta);
+  PyObject *o_L[3] = {0,  0, 0};
   
-  // return the results
-  npy_intp dims[1] = {3};
+  if (!PyArg_ParseTupleAndKeywords(args, keywds,  "ddd|O!O!O!", kwlist,
+        &q, &F, &delta, 
+        &PyBool_Type, o_L,
+        &PyBool_Type, o_L + 1,
+        &PyBool_Type, o_L + 2)
+  ) return NULL;
+  
+  // reading selection
+  for (int i = 0; i < 3; ++i)
+    if (o_L[i]) b_L[i] = PyObject_IsTrue(o_L[i]);
+  
+  // create a binary version of selection
+  unsigned choice = 0;
+  for (int i = 0, j = 1; i < 3; ++i, j<<=1) 
+    if (b_L[i]) choice += j;
+  
+  //
+  // Do calculations
+  //
+  double omega[3], L[3];
+  
+  gen_roche::critical_potential(omega, L, choice, q, F, delta);
 
-  PyObject *pya = 
-    PyArray_SimpleNewFromData(1, dims, NPY_DOUBLE, omega);
+  PyObject *results = PyDict_New();
+    
+  //
+  // Store results
+  //  
+  const char *labels[] = {"L1","L2", "L3"};
   
-  PyArray_ENABLEFLAGS((PyArrayObject *)pya, NPY_ARRAY_OWNDATA);
+  for (int i = 0; i < 3; ++i)
+    if (b_L[i]) 
+      PyDict_SetItemStringStealRef(results, labels[i], PyFloat_FromDouble(omega[i]));
   
-  return pya;
+  return results;
 }
 
 /*
@@ -464,6 +519,12 @@ static PyObject *rotstar_from_roche(PyObject *self, PyObject *args, PyObject *ke
     lvolume: boolean, default True
     larea: boolean, default True
     
+    epsA : float, default 1e-12
+      relative precision of the area
+
+    epsV : float, default 1e-12
+      relative precision of the volume
+
   Returns:
   
     dictionary
@@ -477,6 +538,7 @@ static PyObject *rotstar_from_roche(PyObject *self, PyObject *args, PyObject *ke
       float:
 */
 
+//#define DEBUG
 static PyObject *roche_area_volume(PyObject *self, PyObject *args, PyObject *keywds) {
   
   //
@@ -491,43 +553,45 @@ static PyObject *roche_area_volume(PyObject *self, PyObject *args, PyObject *key
     (char*)"choice",
     (char*)"larea",
     (char*)"lvolume",
+    (char*)"epsA",
+    (char*)"epsV",
     NULL};
        
   int choice = 0;
+ 
+  double eps[2] = {1e-12, 1e-12};
   
-  bool 
-    b_larea = true,
-    b_lvolume = true;
-        
-  PyObject
-    *o_larea = 0,
-    *o_lvolume = 0;
+  bool b_av[2] = {true, true};  // b_larea, b_lvolume
+  
+  PyObject *o_av[2] = {0,0};    // *o_larea = 0, *o_lvolume = 0;
   
   double q, F, delta, Omega0;
   
   if (!PyArg_ParseTupleAndKeywords(
-      args, keywds,  "dddd|iO!O!", kwlist, 
+      args, keywds,  "dddd|iO!O!dd", kwlist, 
       &q, &F, &delta, &Omega0, 
       &choice,
-      &PyBool_Type, &o_larea,
-      &PyBool_Type, &o_lvolume
+      &PyBool_Type, o_av,
+      &PyBool_Type, o_av + 1,
+      eps, eps + 1
       )
     )
     return NULL;
   
-  if (o_larea) b_larea = PyObject_IsTrue(o_larea);
-  if (o_lvolume) b_lvolume = PyObject_IsTrue(o_lvolume);
-  
-  if (!b_larea && !b_lvolume) return NULL;
- 
-  //
-  // define result-choice
-  //
   unsigned res_choice = 0;
-  
-  if (b_larea) res_choice |= 1u;
-  if (b_lvolume) res_choice |= 2u;
  
+  //
+  // Read boolean variables and define result-choice
+  //   
+  for (int i = 0, j = 1; i < 2; ++i, j <<=1 )
+    if (o_av[i]) { 
+      b_av[i] = PyObject_IsTrue(o_av[i]);
+      res_choice += j;
+    }
+  
+  if (res_choice == 0) return NULL;
+  
+
   //
   // Posibility of using approximation
   //
@@ -535,46 +599,122 @@ static PyObject *roche_area_volume(PyObject *self, PyObject *args, PyObject *key
   double 
     w = delta*Omega0,
     b = (1 + q)*F*F*delta*delta*delta,
-    av[2];            // for results
-  
-  if (choice == 0 && w >= 10 && w >= 5*(q + std::cbrt(b*b)/4)){  // approximation
-  
+    w0 = 5*(q + std::cbrt(b*b)/4) - 29.554 - 5.26235*std::log(std::min(eps[0], eps[1])),
+    av[2];                          // for results
+    
+  if (choice == 0 && w >= std::max(10., w0)) {
+    
+    // Approximation by using the series 
+    // with empirically derived criterion 
+    
     gen_roche::area_volume_primary_approx_internal(av, res_choice, Omega0, w, q, b);
     
-  } else { // integration 
+  } else { 
+    
+    // Approximation by integration over the surface
+    // relative precision should be better than 1e-12
+    
     //
     // Choosing boundaries on x-axis
     //
     
     double xrange[2];
       
-    if (!gen_roche::lobe_x_points(xrange, choice, Omega0, q, F, delta, true)){
+    if (!gen_roche::lobe_xrange(xrange, choice, Omega0, q, F, delta, true)){
       std::cerr << "roche_area_volume:Determining lobe's boundaries failed\n";
       return NULL;
     }
     
     //
-    // Calculate area and volume
+    // Calculate area and volume:
+    //
+
+    const int m_min = 1 << 6;  // minimal number of points along x-axis
+    
+    int m0 = m_min;            // starting number of points alomg x-axis  
+        
+    bool 
+      polish = false,
+      adjust = true;
+      
+    double p[2][2], e, t;
+        
+    #if defined(DEBUG)
+    std::cerr.precision(16);
+    std::cerr << std::scientific;
+    #endif
+    
+    //
+    // one step adjustment of precison for area and volume
+    // calculation
     //
     
-    int m = 1 << 14;        // TODO: this should be more precisely stated 
-    
-    bool polish = false;    // TODO: why does not it work all the time
+    do {
+        
+      for (int i = 0, m = m0; i < 2; ++i, m <<= 1) {
+        gen_roche::area_volume_integration
+          (p[i], res_choice, xrange, Omega0, q, F, delta, m, polish);
+        
+        #if defined(DEBUG)
+        std::cerr << "P:" << p[i][0] << '\t' << p[i][1] << '\n';
+        #endif
+      }
       
-    gen_roche::area_volume_integration(av, res_choice, xrange, Omega0, q, F, delta, m, polish);
+      if (adjust) {
+           
+        // extrapolation based on assumption
+        //   I = I0 + a_1 h^4
+        // estimating errors
+        
+        int m0_next = m0;
+        
+        adjust = false;
+        
+        for (int i = 0; i < 2; ++i) if (b_av[i]) {
+          // best approximation
+          av[i] = t = (16*p[1][i] - p[0][i])/15;
+          
+          // relative error
+          e = std::max(std::abs(p[0][i]/t - 1), 16*std::abs(p[1][i]/t - 1));
+          
+          #if defined(DEBUG)
+          std::cerr << "err=" << e << " m0=" << m0 << '\n';
+          #endif
+          
+          if (e > eps[i]) {
+            int k = int(1.1*m0*std::pow(e/eps[i], 0.25));
+            if (k > m0_next) {
+              m0_next = k;
+              adjust = true;
+            }
+          }
+        }
+        
+        if (adjust) m0 = m0_next; else break;
+      
+      } else {
+        // best approximation
+        for (int i = 0; i < 2; ++i) 
+          if (b_av[i]) av[i] = (16*p[1][i] - p[0][i])/15;
+        break;
+      }
+      
+      adjust = false;
+      
+    } while (1);
+    
   }
    
   PyObject *results = PyDict_New();
-      
-  if (b_larea)
-    PyDict_SetItemStringStealRef(results, "larea", PyFloat_FromDouble(av[0]));
-
-  if (b_lvolume)
-    PyDict_SetItemStringStealRef(results, "lvolume", PyFloat_FromDouble(av[1]));
   
+  const char *str[2] =  {"larea", "lvolume"};
+  
+  for (int i = 0; i < 2; ++i) if (b_av[i])
+    PyDict_SetItemStringStealRef(results, str[i], PyFloat_FromDouble(av[i]));
+
   return results;
 }
-
+//#undef DEBUG
 
 /*
   C++ wrapper for Python code:
@@ -702,9 +842,9 @@ static PyObject *rotstar_area_volume(PyObject *self, PyObject *args, PyObject *k
             0 for discussing left lobe
             1 for discussing right lobe
             2 for discussing overcontact
-    precision: float, default 1e-10
+    precision: float, default 1e-12
       aka relative precision
-    accuracy: float, default 1e-10
+    accuracy: float, default 1e-12
       aka absolute precision
     max_iter: integer, default 100
       maximal number of iterations in the Newton-Raphson
@@ -742,8 +882,8 @@ static PyObject *roche_Omega_at_vol(PyObject *self, PyObject *args, PyObject *ke
     vol, 
     q, F, delta, 
     Omega0 = nan(""),
-    precision = 1e-10,
-    accuracy = 1e-10;
+    precision = 1e-12,
+    accuracy = 1e-12;
   
   int max_iter = 100;  
   
@@ -764,30 +904,102 @@ static PyObject *roche_Omega_at_vol(PyObject *self, PyObject *args, PyObject *ke
     std::cerr << "Currently not supporting lack of guessed Omega.\n";
     return NULL;
   }
+     
+  const int m_min = 1 << 6;  // minimal number of points along x-axis
     
-  int m = 1 << 14, // TODO: this should be more precisely stated 
-      it = 0;
-      
-  double Omega = Omega0, dOmega, V[2] = {0,0}, xrange[2];
+  int 
+    m0 = m_min,  // minimal number of points along x-axis
+    it = 0;      // number of iterations
+
+  double 
+    Omega = Omega0, dOmega, 
+    V[2], xrange[2], p[2][2];
   
   bool polish = false;
   
   #if defined(DEBUG)
-  std::cout.precision(16); std::cout << std::scientific;
+  std::cerr.precision(16); 
+  std::cerr << std::scientific;
   #endif
+  
+  // expected precisions of the integrals
+  double eps = precision/2;
+  
   do {
 
-    if (!gen_roche::lobe_x_points(xrange, choice, Omega, q, F, delta)){
+    if (!gen_roche::lobe_xrange(xrange, choice, Omega, q, F, delta, true)){
       std::cerr << "roche_area_volume:Determining lobe's boundaries failed\n";
       return NULL;
     }
+    
+    // adaptive calculation of the volume and its derivative
+    bool adjust = true;
+    
+    do {
+      
+      #if defined(DEBUG)
+      std::cerr << "it=" << it << '\n';
+      #endif
+       
+      // calculate volume and derivate volume w.r.t to Omega
+      for (int i = 0, m = m0; i < 2; ++i, m <<= 1) {
+        gen_roche::volume(p[i], 3, xrange, Omega, q, F, delta, m, polish);
         
-    gen_roche::volume(V, 3, xrange, Omega, q, F, delta, m, polish);
+        #if defined(DEBUG)
+        std::cerr << "V:" <<  p[i][0] << '\t' << p[i][1] << '\n';
+        #endif
+      }
+     
+      if (adjust) {
+        
+        // extrapolations based on the expansion
+        // I = I0 + a1 h^4 + a2 h^5 + ...
+        // result should have relative precision better than 1e-12 
+        
+        int m0_next = m0;
+        
+        double e, t;
+        
+        adjust = false;
+        
+        for (int i = 0; i < 2; ++i) {
+          
+          // best estimate
+          V[i] = t = (16*p[1][i] - p[0][i])/15;
+          
+          // relative error
+          e = std::max(std::abs(p[0][i]/t - 1), 16*std::abs(p[1][i]/t - 1));
+          
+          #if defined(DEBUG)
+          std::cerr << "e=" << e << " m0 =" << m0 << '\n';
+          #endif
+          
+          if (e > eps) {
+            int k = int(1.1*m0*std::pow(e/eps, 0.25));
+            if (k > m0_next) {
+              m0_next = k;
+              adjust = true;
+            }  
+          }
+        }
+        
+        if (adjust) m0 = m0_next; else break;
+        
+      } else {
+        // just calculate best estimate, 
+        // as the precision should be adjusted
+        for (int i = 0; i < 2; ++i) V[i] =(16*p[1][i] - p[0][i])/15;
+        break;
+      }
+      
+      adjust = false;
+      
+    } while (1); 
         
     Omega -= (dOmega = (V[0] - vol)/V[1]);
     
     #if defined(DEBUG) 
-    std::cout 
+    std::cerr 
       << "Omega=" << Omega 
       << "\tvol=" << vol 
       << "\tV[0]= " << V[0] 
@@ -805,6 +1017,7 @@ static PyObject *roche_Omega_at_vol(PyObject *self, PyObject *args, PyObject *ke
   
   return PyFloat_FromDouble(Omega);
 }
+#undef DEBUG
 
 /*
   C++ wrapper for Python code:
@@ -829,9 +1042,9 @@ static PyObject *roche_Omega_at_vol(PyObject *self, PyObject *args, PyObject *ke
     Omega0 - guess for value potential Omega1
   
   keywords: (optional)
-    precision: float, default 1e-10
+    precision: float, default 1e-12
       aka relative precision
-    accuracy: float, default 1e-10
+    accuracy: float, default 1e-12
       aka absolute precision
     max_iter: integer, default 100
       maximal number of iterations in the Newton-Raphson
@@ -862,8 +1075,8 @@ static PyObject *rotstar_Omega_at_vol(PyObject *self, PyObject *args, PyObject *
   double
     vol, omega, 
     Omega0 = nan(""),
-    precision = 1e-10,
-    accuracy = 1e-10;
+    precision = 1e-12,
+    accuracy = 1e-12;
   
   int max_iter = 100;
   
@@ -1158,8 +1371,6 @@ static PyObject *roche_Omega(PyObject *self, PyObject *args) {
   return PyFloat_FromDouble(-b.constrain((double*)PyArray_DATA(X)));
 }
 
-
-
 /*
   C++ wrapper for Python code:
   
@@ -1397,6 +1608,13 @@ static PyObject *roche_marching_mesh(PyObject *self, PyObject *args, PyObject *k
   // https://docs.python.org/2/c-api/dict.html
   //
   PyObject *results = PyDict_New();
+  
+  
+  if (choice < 0 || choice > 2){
+    std::cerr << 
+      "roche_marching_mesh::This choice is not supported\n"; 
+    return NULL;
+  }
     
   //
   // Choosing the meshing initial point 
@@ -1405,7 +1623,7 @@ static PyObject *roche_marching_mesh(PyObject *self, PyObject *args, PyObject *k
   double r[3], g[3];
   
   if (!gen_roche::meshing_start_point(r, g, choice, Omega0, q, F, d)){
-    std::cerr << "roche_area_volume:Determining initial meshing point failed\n";
+    std::cerr << "roche_marching_mesh:Determining initial meshing point failed\n";
     return NULL;
   }
   
@@ -2081,7 +2299,10 @@ static PyObject *mesh_rough_visibility(PyObject *self, PyObject *args){
     area : boolean, default False
     centers: boolean, default False 
     cnormals: boolean, default False 
-    cnormgrads: boolean, default False 
+    cnormgrads: boolean, default False
+    
+    curvature: boolean, default False
+      Enabling curvature dependent offseting.
   
   Returns: dictionary with keywords
   
@@ -2118,6 +2339,7 @@ static PyObject *mesh_offseting(PyObject *self, PyObject *args,  PyObject *keywd
     (char*)"areas",
     (char*)"volume",
     (char*)"area",
+    (char*)"curvature",
     NULL
   };
 
@@ -2130,7 +2352,8 @@ static PyObject *mesh_offseting(PyObject *self, PyObject *args,  PyObject *keywd
     b_tnormals = false,
     b_areas = false,
     b_volume = false,
-    b_area = false;
+    b_area = false,
+    b_curvature = false;
     
   PyArrayObject *oV, *oNatV, *oT;
   
@@ -2139,10 +2362,11 @@ static PyObject *mesh_offseting(PyObject *self, PyObject *args,  PyObject *keywd
     *o_tnormals = 0,
     *o_areas = 0,
     *o_volume = 0,
-    *o_area = 0;
+    *o_area = 0,
+    *o_curvature = 0;
     
   if (!PyArg_ParseTupleAndKeywords(
-      args, keywds,  "dO!O!O!|iO!O!O!O!O!", kwlist,
+      args, keywds,  "dO!O!O!|iO!O!O!O!O!O!", kwlist,
       &area,
       &PyArray_Type, &oV, 
       &PyArray_Type, &oNatV, 
@@ -2152,7 +2376,8 @@ static PyObject *mesh_offseting(PyObject *self, PyObject *args,  PyObject *keywd
       &PyBool_Type, &o_tnormals,
       &PyBool_Type, &o_areas,
       &PyBool_Type, &o_volume,
-      &PyBool_Type, &o_area
+      &PyBool_Type, &o_area,
+      &PyBool_Type, &o_curvature
       )) return NULL;
 
   if (o_vertices) b_vertices = PyObject_IsTrue(o_vertices);
@@ -2160,7 +2385,8 @@ static PyObject *mesh_offseting(PyObject *self, PyObject *args,  PyObject *keywd
   if (o_areas) b_areas = PyObject_IsTrue(o_areas);
   if (o_volume) b_volume = PyObject_IsTrue(o_volume);
   if (o_area) b_area = PyObject_IsTrue(o_area);
-
+  if (o_curvature) b_curvature = PyObject_IsTrue(o_curvature);
+  
   //
   // Storing input data
   //
@@ -2174,11 +2400,14 @@ static PyObject *mesh_offseting(PyObject *self, PyObject *args,  PyObject *keywd
   //
   // Running mesh offseting
   //
-  if (!mesh_offseting_matching_area(area, V, NatV, Tr, max_iter)){
+  if (b_curvature ? 
+       !mesh_offseting_matching_area_curvature(area, V, NatV, Tr, max_iter):
+       !mesh_offseting_matching_area(area, V, NatV, Tr, max_iter) ){
+         
     std::cerr << "mesh_offseting_matching_area::Offseting failed\n";
     return NULL;
   }
-
+ 
   //
   // Calculate properties of the mesh with new vertices 
   //
@@ -3640,9 +3869,9 @@ static PyObject *roche_horizon(PyObject *self, PyObject *args, PyObject *keywds)
   double dt = 0; 
   
   if (choice == 0 || choice == 1)
-    dt = utils::M_2PI*utils::hypot3(p)/length;
+    dt = utils::m_2pi*utils::hypot3(p)/length;
   else
-    dt = 2*utils::M_2PI*utils::hypot3(p)/length;
+    dt = 2*utils::m_2pi*utils::hypot3(p)/length;
   
   //
   //  Find the horizon
@@ -3696,7 +3925,6 @@ static PyObject *rotstar_horizon(PyObject *self, PyObject *args, PyObject *keywd
     (char*)"omega",
     (char*)"Omega0",
     (char*)"length",
-    (char*)"choice",
     NULL
   };
   
@@ -3708,7 +3936,7 @@ static PyObject *rotstar_horizon(PyObject *self, PyObject *args, PyObject *keywd
     length = 1000;
   
   if (!PyArg_ParseTupleAndKeywords(
-      args, keywds,  "O!dd|ii", kwlist,
+      args, keywds,  "O!dd|i", kwlist,
       &PyArray_Type, &oV, 
       &omega, &Omega0,
       &length)) return NULL;
@@ -3732,7 +3960,7 @@ static PyObject *rotstar_horizon(PyObject *self, PyObject *args, PyObject *keywd
   // Estimate the step
   //
   
-  double dt = utils::M_2PI*utils::hypot3(p)/length;
+  double dt = utils::m_2pi*utils::hypot3(p)/length;
   
   //
   //  Find the horizon
@@ -3749,6 +3977,298 @@ static PyObject *rotstar_horizon(PyObject *self, PyObject *args, PyObject *keywd
   }
 
   return PyArray_From3DPointVector(H);
+}
+
+
+/*
+  C++ wrapper for Python code:
+
+    Calculation of the ranges of Roche lobes on x-axix
+    
+  Python:
+
+    xrange = roche_xrange(q, F, d, Omega0, <keywords>=<value>)
+    
+  with arguments
+  
+  positionals: necessary
+    q: float = M2/M1 - mass ratio
+    F: float - synchronicity parameter
+    d: float - separation between the two objects
+    Omega0: float - value of the generalized Kopal potential
+  
+  keywords:
+    choice: integer, default 0:
+      0 - searching a point on left lobe
+      1 - searching a point on right lobe
+      2 - searching a point for overcontact case
+  
+  Return: 
+    xrange: 1-rank numpy array of two numbers p
+*/
+
+static PyObject *roche_xrange(PyObject *self, PyObject *args, PyObject *keywds) {
+
+  //
+  // Reading arguments
+  //
+
+  char *kwlist[] = {
+    (char*)"q",
+    (char*)"F",
+    (char*)"d",
+    (char*)"Omega0",
+    (char*)"choice",
+    NULL
+  };
+    
+  double q, F, d, Omega0;   
+    
+  int choice  = 0;
+  
+  if (!PyArg_ParseTupleAndKeywords(
+      args, keywds,  "dddd|i", kwlist,
+      &q, &F, &d, &Omega0, &choice)) return NULL;
+
+  
+  if (choice < 0 || choice > 2) {
+    std::cerr 
+      << "roche_xrange::This choice of computation is not supported\n";
+    return NULL;
+  }
+  
+  double *xrange = new double [2];
+  
+  if (!gen_roche::lobe_xrange(xrange, choice, Omega0, q, F, d, true)){
+      std::cerr << "roche_xrange::Determining lobe's boundaries failed\n";
+      return NULL;
+  }
+  
+  npy_intp dims = 2;
+  
+  PyObject *results = PyArray_SimpleNewFromData(1, &dims, NPY_DOUBLE, xrange);
+  
+  PyArray_ENABLEFLAGS((PyArrayObject *)results, NPY_ARRAY_OWNDATA);
+  
+  return results;
+}
+
+/*
+  C++ wrapper for Python code:
+
+  Determining the square 3D grid for Roche lobe:
+      
+    vec{r}(i_1,i_2,i_3) = vec{r}_0 + (L_1 i_1, L_2 i_2, L_3 i_3)
+    
+  with indices
+      
+    i_k in [0, N_k - 1] : k = 1,2,3 
+    
+  and step sizes
+    
+    L_k : k = 1,2,3 
+      
+  Python:
+
+    dict = roche_square_grid(q, F, d, dims, <keywords>=<value> )
+    
+  with arguments
+  
+  positionals: necessary
+  
+    q: float = M2/M1 - mass ratio
+    F: float - synchronicity parameter
+    d: float - separation between the two objects
+    Omega0: float - value of the generalized Kopal potential  
+    dims: 1-rank numpy arrays of 3 integers = [N_0, N_1, N_2]
+  
+  keywords: optional
+    choice: integer, default 0:
+      0 - searching a point on left lobe
+      1 - searching a point on right lobe
+      2 - searching a point for overcontact case
+      
+  Return: a dictionary with keyword
+  
+    bmask: binary mask
+      b_0, .., b_{size-1}         size = N_0, N_1, N_2
+      
+      b_index in {0,1}
+      
+      index(i_1, i_2, i_3)  = i_1*N2*N3 + i2*N3 + i3
+    
+    bbox:
+      2-rank numpy array of float = [[xmin,xmax],[ymin,ymax],[zmin,zmax]]
+  
+    origin: origin of grid r0 = [x, y, z]
+      1-rank numpy of 3 floats
+      
+    steps: step sizes/cell dimensions [L_1, L_2, L_3]
+      1-rank numpy of 3 floats
+*/
+
+
+static PyObject *roche_square_grid(PyObject *self, PyObject *args, PyObject *keywds) {
+
+  //
+  // Reading arguments
+  //
+
+  char *kwlist[] = {
+    (char*)"q",
+    (char*)"F",
+    (char*)"d",
+    (char*)"Omega0",
+    (char*)"dims",
+    (char*)"choice",
+    NULL
+  };
+  
+  double q, F, d, Omega0;   
+    
+  int choice  = 0;
+  
+  PyArrayObject *o_dims;
+  
+  if (!PyArg_ParseTupleAndKeywords(
+      args, keywds,  "ddddO!|i", kwlist,
+      &q, &F, &d, &Omega0,    // necessary
+      &PyArray_Type, &o_dims, 
+      &choice)                // optional
+      ) return NULL;
+
+
+  if (choice < 0 || choice > 2) {
+    std::cerr << "roche_square_grid::This choice is not supported\n";
+    return NULL;
+  }
+  
+  long *dims = (long*) PyArray_DATA(o_dims);
+   
+  //
+  // Determining the ranges
+  //
+  
+  double ranges[3][2];
+  
+  bool checks = true;
+  // x - range
+  if (!gen_roche::lobe_xrange(ranges[0], choice, Omega0, q, F, d, checks)) {
+    std::cerr << "roche_square_grid::Failed to obtain xrange\n";
+    return NULL;
+  }
+  
+  switch (choice) {
+    
+    case 0: // left lobe 
+      // y - range
+      ranges[1][0] = -(ranges[1][1] = gen_roche::lobe_ybound_L(Omega0, q, F, d));
+      // z - range
+      ranges[2][0] = -(ranges[2][1] = gen_roche::poleL(Omega0, q, F, d));
+      break;
+      
+    case 1: // right lobe
+      // y - range
+      ranges[1][0] = -(ranges[1][1] = gen_roche::lobe_ybound_R(Omega0, q, F, d));
+      // z -range
+      ranges[2][0] = -(ranges[2][1] = gen_roche::poleR(Omega0, q, F, d));
+      break;
+      
+    default:
+      // y - range    
+      ranges[1][0] = -(ranges[1][1] = 
+        std::max(
+          gen_roche::lobe_ybound_L(Omega0, q, F, d), 
+          gen_roche::lobe_ybound_R(Omega0, q, F, d)
+        ));
+        
+      // z -range      
+      ranges[2][0] = -(ranges[2][1] = 
+        std::max(
+          gen_roche::poleL(Omega0, q, F, d), 
+          gen_roche::poleR(Omega0, q, F, d)
+        ));      
+  }
+  
+  //
+  // Determining characteristics of the grid
+  //
+  double r0[3], L[3];
+  for (int i = 0; i < 3; ++i){
+    r0[i] = ranges[i][0];
+    L[i] = (ranges[i][1] - ranges[i][0])/(dims[i]-1);
+  }
+
+  
+  //
+  // Scan over the Roche lobe
+  //
+  int size = dims[0]*dims[1]*dims[2];
+  
+  std::uint8_t *mask = new std::uint8_t [size];
+  
+  {
+    double params[4] = {q, F, d, Omega0}, r[3]; 
+    
+    Tgen_roche<double> roche(params);
+  
+    std::uint8_t *m = mask;
+    
+    std::memset(m, 0, size);
+    
+    int u[3];
+    
+    for (u[0] = 0; u[0] < dims[0]; ++u[0])
+      for (u[1] = 0; u[1] < dims[1]; ++u[1])
+        for (u[2] = 0; u[2] < dims[2]; ++u[2], ++m) {
+          
+          for (int i = 0; i < 3; ++i) r[i] = r0[i] + u[i]*L[i];
+          
+          if (roche.constrain(r) <= 0) *m = 1;
+        }  
+    
+  }
+   
+  //
+  // Returning results
+  //
+  
+  double 
+    *origin = new double [3],
+    *steps = new double [3],
+    *bbox = new double [6];
+
+
+  for (int i = 0; i < 3; ++i){
+    origin[i] = r0[i];
+    steps[i] = L[i];
+    bbox[2*i] = ranges[i][0];
+    bbox[2*i + 1] = ranges[i][1];
+  }
+  
+  npy_intp nd[3] = {3, 2, 0};
+    
+  PyObject 
+    *o_origin = PyArray_SimpleNewFromData(1, nd, NPY_DOUBLE, origin),
+    *o_steps = PyArray_SimpleNewFromData(1, nd, NPY_DOUBLE, steps),
+    *o_bbox = PyArray_SimpleNewFromData(2, nd, NPY_DOUBLE, bbox);
+  
+  PyArray_ENABLEFLAGS((PyArrayObject *)o_origin, NPY_ARRAY_OWNDATA);
+  PyArray_ENABLEFLAGS((PyArrayObject *)o_steps, NPY_ARRAY_OWNDATA);
+  PyArray_ENABLEFLAGS((PyArrayObject *)o_bbox, NPY_ARRAY_OWNDATA);
+  
+  // storing the mask
+  for (int i = 0; i < 3; ++i) nd[i] = dims[i];
+  PyObject *o_mask = PyArray_SimpleNewFromData(3, nd, NPY_UINT8, mask);
+  PyArray_ENABLEFLAGS((PyArrayObject *)o_mask, NPY_ARRAY_OWNDATA);
+  
+  PyObject *results = PyDict_New();
+  PyDict_SetItemStringStealRef(results, "origin", o_origin);
+  PyDict_SetItemStringStealRef(results, "steps", o_steps);
+  PyDict_SetItemStringStealRef(results, "bbox", o_bbox);
+  PyDict_SetItemStringStealRef(results, "mask", o_mask);
+      
+  return results;
 }
 
 
@@ -3913,9 +4433,9 @@ static PyObject *ld_gradparD(PyObject *self, PyObject *args, PyObject *keywds) {
   LD::gradparD(type, mu, par, g);
     
   // return the results
-  npy_intp dims[1] = {nr_par};
+  npy_intp dims = nr_par;
 
-  PyObject *pya = PyArray_SimpleNewFromData(1, dims, NPY_DOUBLE, g);
+  PyObject *pya = PyArray_SimpleNewFromData(1, &dims, NPY_DOUBLE, g);
   
   PyArray_ENABLEFLAGS((PyArrayObject *)pya, NPY_ARRAY_OWNDATA);
 
@@ -4009,7 +4529,7 @@ static PyObject *wd_readdata(PyObject *self, PyObject *args, PyObject *keywds) {
 
   return results;
 }
-
+#if 0
 /*
   C++ wrapper for Python code:
 
@@ -4079,12 +4599,134 @@ static PyObject *wd_planckint(PyObject *self, PyObject *args, PyObject *keywds) 
   
   return res;
 }
+#else
+/*
+  C++ wrapper for Python code:
 
+    Computing the logarithm of the Planck central intensity. Works for 
+    temperatures in the range [500,500300] K.
+
+  Python:
+   
+    result = wd_planckint(t, ifil, planck_table)
+   
+  Input:
+  
+  positional: necessary
+  
+    t:  float - temperature or
+        1-rank numpy array of float - temperatures
+        
+    ifil: integer - index of the filter 1,2, ... 
+    planck_table: 1-rank numpy array of floats - array of coefficients 
+     
+  Return:
+    
+    result : 
+      ylog: float - log of Planck central intensity or
+      1- rank numpy array of floats - log of Planck central intensities
+    
+    Note:
+      In the case of errors in calculations ylog/entry in numpy array is NaN.
+*/
+static PyObject *wd_planckint(PyObject *self, PyObject *args, PyObject *keywds) {
+  
+  //
+  // Reading arguments
+  //
+
+  char *kwlist[] = {
+    (char*)"t",
+    (char*)"ifil",
+    (char*)"planck_table",
+    NULL
+  };
+  
+  int ifil;
+ 
+  PyObject *ot;
+
+  PyArrayObject *oplanck_table;
+  
+  if (!PyArg_ParseTupleAndKeywords(
+        args, keywds, "OiO!", kwlist, 
+        &ot, &ifil, &PyArray_Type, &oplanck_table)
+      ) return NULL;
+
+  double *planck_table = (double*) PyArray_DATA(oplanck_table);
+    
+  if (PyFloat_Check(ot)) { // argument if float
+    
+    double ylog, t = PyFloat_AS_DOUBLE(ot);
+    
+    //
+    //  Calculate ylog and return
+    //
+    
+    if (wd_atm::planckint_onlylog(t, ifil, planck_table, ylog))
+      return PyFloat_FromDouble(ylog);
+    else {
+      std::cerr 
+      << "wd_planckint::Failed to calculate Planck central intensity\n";
+      return PyFloat_FromDouble(std::nan(""));
+    }
+  
+  } else if (PyArray_Check(ot)) {  // argument is a numpy array
+    
+    int n = PyArray_DIM((PyArrayObject *)ot, 0);
+     
+    if (n == 0) {
+      std::cerr << "wd_planckint::Arrays of zero length\n";
+      return NULL;
+    }
+    
+    double *t =  (double*) PyArray_DATA((PyArrayObject *)ot),
+            *results = new double [n];
+    
+    //
+    //  Calculate ylog for an array 
+    //
+
+    bool ok = true;
+    
+    for (double *r = results, *r_e = r + n; r != r_e;  ++r, ++t)
+      if (!wd_atm::planckint_onlylog(*t, ifil, planck_table, *r)) { 
+        *r = std::nan("");
+        ok = false;
+      }
+    
+    if (!ok) {
+      std::cerr 
+      << "wd_planckint::Failed to calculate Planck central intensity at least once\n";
+    }
+    
+    //
+    // Return results
+    //
+  
+    npy_intp dims = n;
+    PyObject *oresults = 
+      PyArray_SimpleNewFromData(1, &dims, NPY_DOUBLE, results);
+      
+    PyArray_ENABLEFLAGS((PyArrayObject *)oresults, NPY_ARRAY_OWNDATA);
+    
+    return oresults;
+  } 
+  
+  std::cerr 
+    << "wd_planckint:: This type of temperature input is not supported\n";
+  return NULL;
+}
+
+
+#endif
+
+#if 0
 /*
   C++ wrapper for Python code:
     
-    Calculation of the light intensity from a star with certain 
-    atmosphere model.
+    Calculation of the light intensity and their logarithm 
+    for a star with a certain atmosphere model.
   
   Python:
   
@@ -4094,7 +4736,7 @@ static PyObject *wd_planckint(PyObject *self, PyObject *args, PyObject *keywds) 
   
    t:float - temperature
    logg:float - logarithm of surface gravity
-   abunin:float - abundance
+   abunin:float - abundance/metallicity
    ifil: integer - index of the filter 1,2, ... 
    planck_table: 1-rank numpy array of float - planck table
    atm_table: 1-rank numpy array of float - atmospheres table
@@ -4160,7 +4802,233 @@ static PyObject *wd_atmint(PyObject *self, PyObject *args, PyObject *keywds) {
   
   return res;
 }
+#else
+/*
+  C++ wrapper for Python code:
+    
+    Calculation of logarithm the light intensity from a star with a certain 
+    atmosphere model.
+  
+  Python:
+  
+    results = wd_atmint(t, logg, abunin, ifil, planck_table, atm_table, <keywords>=<value>)
+  
+  Input:
+  
+  positional: necessary
+  
+   t:float - temperature or 
+     1-rank numpy array of floats - temperatures
+    
+   logg:float - logarithm of surface gravity or
+        1-rank numpy array of floats - temperatures
+        
+   abunin:float - abundance/metallicity
+          1-rank numpy of floats - abundances
+        
+   ifil: integer - index of the filter 1,2, ... 
+   planck_table: 1-rank numpy array of float - planck table
+   atm_table: 1-rank numpy array of float - atmospheres table
 
+  keywords: optional
+  
+    return_abunin: boolean, default false
+    if allowed value of abunin should be returned 
+    
+  Return:
+    
+    if t is float:
+      if return_abunin == true:
+        result : 1-rank numpy array of floats = [xintlog, abunin]
+      else
+        result: float = xintlog 
+    else
+      if return_abunin == true:
+        result : 2-rank numpy array of float -- array of [xintlog, abunin]
+      else
+        result: 1-rank numpy array of floats -- xintlogs
+    
+  with
+  
+    xintlog - log of intensity
+    abunin -  allowed value nearest to the input value.
+*/
+static PyObject *wd_atmint(PyObject *self, PyObject *args, PyObject *keywds) {
+  //
+  // Reading arguments
+  //
+
+  char *kwlist[] = {
+    (char*)"t",
+    (char*)"logg",
+    (char*)"abunin",
+    (char*)"ifil",
+    (char*)"planck_table",
+    (char*)"atm_table",
+    (char*)"return_abunin",
+    NULL
+  };
+  
+
+  int ifil;
+
+  bool return_abunin = false;
+
+  PyObject *ot, *ologg, *oabunin, *oreturn_abunin = 0;
+  
+  PyArrayObject *oplanck_table, *oatm_table;
+  
+  if (!PyArg_ParseTupleAndKeywords(
+        args, keywds, "OOOiO!O!|O!", kwlist, 
+        &ot, &ologg, &oabunin, &ifil, 
+        &PyArray_Type, &oplanck_table, 
+        &PyArray_Type, &oatm_table,
+        &PyBool_Type, &oreturn_abunin
+      )) return NULL;
+  
+
+  if (oreturn_abunin) return_abunin = PyBool_Check(oreturn_abunin);
+  
+  //    
+  // Check type of temperature argument and read them
+  //
+  
+  double t, logg, abunin, *pt, *plogg, *pabunin;
+  
+  int n = -2;
+  
+  if (PyFloat_Check(ot)){ 
+    n = -1;
+    // arguments
+    t = PyFloat_AS_DOUBLE(ot),
+    logg = PyFloat_AS_DOUBLE(ologg),
+    abunin = PyFloat_AS_DOUBLE(oabunin);
+  
+  } else if (PyArray_Check(ot)) {
+    
+    n = PyArray_DIM((PyArrayObject *)ot, 0);
+    
+    if (n == 0) {
+      std::cerr << "wd_planckint::Arrays are of zero length\n";
+      return NULL;
+    }
+        
+    // arguments
+    pt = (double*)PyArray_DATA((PyArrayObject *)ot),
+    plogg = (double*)PyArray_DATA((PyArrayObject *)ologg),
+    pabunin = (double*)PyArray_DATA((PyArrayObject *)oabunin);  
+
+  } else {
+    std::cerr 
+      << "wd_planckint:: This type of temperature input is not supported\n";
+    return NULL;
+  }
+  
+  //
+  // Do calculations and storing it in PyObject
+  //
+  
+  PyObject *oresults;
+    
+  double *planck_table = (double*)PyArray_DATA(oplanck_table), 
+         *atm_table = (double*)PyArray_DATA(oatm_table);
+
+  if (return_abunin) {   // returning also abundances
+    
+    //
+    //  Calculate yintlog and abundance
+    //
+    
+    if (n == -1){ // single calculation
+    
+      double *r = new double[2]; // to store results
+
+      r[1] = abunin;
+      
+      // do calculation    
+      if (!wd_atm::atmx_onlylog(t, logg, r[1], ifil, planck_table, atm_table, r[0])) {
+        std::cerr << "wd_atmint::Failed to calculate logarithm of intensity\n";
+        r[0] = std::nan("");
+      }
+      
+      // store results in numpy array
+      npy_intp dims = 2;
+      oresults = PyArray_SimpleNewFromData(1, &dims, NPY_DOUBLE, r);
+      
+    } else {  // calculation whole array
+     
+      double *results = new  double [2*n]; // to store results
+
+             
+      bool ok = true;
+      for (double *r = results, *r_e = r + 2*n; r != r_e; r += 2, ++pt, ++plogg, ++pabunin){
+        
+        r[1] = *pabunin;
+        
+        if (!wd_atm::atmx_onlylog(*pt, *plogg, r[1], ifil, planck_table, atm_table, r[0])) {
+          r[0] = std::nan("");
+          ok = false;
+        }
+      }  
+      
+      if (!ok)
+        std::cerr << "wd_atmint::Failed to calculate logarithm of intensity at least once\n";
+      
+      // store results in numpy array
+      npy_intp dims[2] = {n, 2};
+      oresults = PyArray_SimpleNewFromData(2, dims, NPY_DOUBLE, results); 
+    }    
+    
+    PyArray_ENABLEFLAGS((PyArrayObject *)oresults, NPY_ARRAY_OWNDATA);
+    
+  } else {                    // returning only logarithm of intensities
+
+    //
+    //  Calculate yintlogs 
+    //
+    
+    if (n == -1){ // single calculation
+        
+      double r; // log of intensity
+        
+      if (wd_atm::atmx_onlylog(t, logg, abunin, ifil, planck_table, atm_table, r))
+        oresults = PyFloat_FromDouble(r);
+      else {
+        std::cerr << "wd_atmint::Failed to calculate logarithm of intensity\n";
+        oresults = PyFloat_FromDouble(std::nan(""));
+      }
+       
+    } else { // calculation whole array
+      
+      double *results = new double [n],  // to store results
+             tmp;
+              
+      bool ok = true;
+      
+      for (double *r = results, *r_e = r + n; r != r_e; ++r, ++pt, ++plogg, ++pabunin){
+        
+        tmp = *pabunin;
+        
+        if (!wd_atm::atmx_onlylog(*pt, *plogg, tmp, ifil, planck_table, atm_table, *r)) {       
+          *r = std::nan("");
+          ok = false;
+        }
+      }  
+      
+      if (!ok)
+        std::cerr 
+        << "wd_atmint::Failed to calculate logarithm of intensity at least once\n";
+      
+      npy_intp dims = n;
+      oresults = PyArray_SimpleNewFromData(1, &dims, NPY_DOUBLE, results);
+      PyArray_ENABLEFLAGS((PyArrayObject *)oresults, NPY_ARRAY_OWNDATA);
+    }  
+  }
+  
+  return oresults;
+}
+
+#endif
 /*
   C++ wrapper for python code:
  
@@ -4374,8 +5242,8 @@ static PyObject *interp(PyObject *self, PyObject *args, PyObject *keywds) {
 static PyMethodDef Methods[] = {
   
   { "roche_critical_potential", 
-    roche_critical_potential,   
-    METH_VARARGS, 
+    (PyCFunction)roche_critical_potential,   
+    METH_VARARGS|METH_KEYWORDS, 
     "Determine the critical potentials of Kopal potential for given "
     "values of q, F, and d."},
   
@@ -4571,6 +5439,19 @@ static PyMethodDef Methods[] = {
     "Calculating the horizon on the rotating star defined by view direction,"
     "omega, and the value of the potential"},
 
+// --------------------------------------------------------------------
+  { "roche_xrange",
+    (PyCFunction)roche_xrange,
+    METH_VARARGS|METH_KEYWORDS, 
+    "Calculating the range of the Roche lobes on x-axis at given"
+    "q, F, d, and the value of generalized Kopal potential Omega."},
+
+// --------------------------------------------------------------------
+  { "roche_square_grid",
+    (PyCFunction)roche_square_grid,
+    METH_VARARGS|METH_KEYWORDS, 
+    "Calculating the square grid of the interior of the Roche lobes at given"
+    "q, F, d, and the value of generalized Kopal potential Omega."},
 // --------------------------------------------------------------------
 
     { "ld_funcD",

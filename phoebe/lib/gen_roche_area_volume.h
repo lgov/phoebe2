@@ -123,11 +123,11 @@ namespace gen_roche {
       d3 = d2*delta,
       a = d3*F*F,
       b = a*(1 + q),
-      omega = delta*Omega0,
+      omega = delta*Omega0;
       
-      t = xrange[0]/delta, 
-      dt = (xrange[1] - xrange[0])/(m*delta),
-      y1[dim], y[dim], k[4][dim], w[glq_n];
+    long double 
+      y1[dim], y[dim], k[4][dim], w[glq_n],  
+      t = xrange[0]/delta, dt = (xrange[1] - xrange[0])/(m*delta);
     
     
     //
@@ -708,7 +708,7 @@ template<class T>
         },
         sum = a[0] + s*(a[1] + s*(a[2] + s*(a[3] + s*(a[4] + s*(a[5] + s*(a[6] + s*(a[7] + s*(a[8] + s*a[9]))))))));
       
-      av[0] = utils::M_4PI/(Omega0*Omega0)*sum;
+      av[0] = utils::m_4pi/(Omega0*Omega0)*sum;
     }
     
     
@@ -723,7 +723,7 @@ template<class T>
         },
         sum = a[0] + s*(a[1] + s*(a[2] + s*(a[3] + s*(a[4] + s*(a[5] + s*(a[6] + s*(a[7] + s*(a[8] + s*a[9]))))))));
 
-      av[1] = utils::M_4PI/(3*Omega0*Omega0*Omega0)*sum;
+      av[1] = utils::m_4pi/(3*Omega0*Omega0*Omega0)*sum;
     }
   }
   
@@ -792,11 +792,11 @@ template<class T>
       d4 = d2*d2,
       a = d3*F*F,
       b = a*(1 + q),
-      omega = delta*Omega0,
+      omega = delta*Omega0;
       
-      t = xrange[0]/delta, 
-      dt = (xrange[1] - xrange[0])/(m*delta),
-      y1[dim], y[dim], k[4][dim], w[glq_n];
+    long double 
+      y1[dim], y[dim], k[4][dim], w[glq_n],  
+      t = xrange[0]/delta, dt = (xrange[1] - xrange[0])/(m*delta);
     
     
     //

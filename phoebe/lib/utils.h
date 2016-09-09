@@ -17,10 +17,11 @@
 
 namespace utils {
   
-  const double M_2PI = 6.2831853071795864769252867665590083999;  // 2 pi
-  const double M_4PI = 12.5663706143591729538505735331180167998; // 4 pi
-  const double M_PI3 = 1.04719755119659774615421446109316806665; // pi/3
-  
+  const double m_pi = 3.14159265358979323846264338327950419984;  // pi
+  const double m_2pi = 6.2831853071795864769252867665590083999;  // 2 pi
+  const double m_4pi = 12.5663706143591729538505735331180167998; // 4 pi
+  const double m_pi3 = 1.04719755119659774615421446109316806665; // pi/3
+
   /*
     Return square of the value.
     
@@ -348,6 +349,32 @@ namespace utils {
     x = y;
     y = z;
   }
+  
+  /*
+    Swap elements of vectors
+ 
+    Input:
+    x, y
+    
+    Output
+    x, y = (y,x)
+    
+  */ 
+  template <class T> void swap_array (T *x, T *y, int n) {
+    if (x != y) {
+      T z;
+      for (T *xe = x + n; x != xe; ++x, ++y) z = *x, *x = *y, *y = z;
+    }
+  }
+
+
+  template <class T, int n> inline void swap_array (T *x, T *y) {
+    if (x != y) {
+      T z;
+      for (T *xe = x + n; x != xe; ++x, ++y) z = *x, *x = *y, *y = z;
+    }
+  }
+
 
   /*
   Sort 3D vector in accending order and return the new index order.
@@ -404,7 +431,7 @@ namespace utils {
       
       int it;
       
-      T dx;
+      long double dx;
       
       for (auto && x : roots) {
         
@@ -414,7 +441,7 @@ namespace utils {
           #if 0
           // Horner algorithm to compute value and derivative
           // http://www.physics.utah.edu/~detar/lessons/c++/array/node4.html
-          T f = a[n], df = 0;
+          long double f = a[n], df = 0;
           for (int i = n - 1; i >= 0; --i) { 
             df = f + x*df;
             f  = a[i] + x*f;
@@ -425,7 +452,7 @@ namespace utils {
           #else
           // Horner algorithm to compute value, derivative and second derivative
           // http://www.ece.rice.edu/dsp/software/FVHDP/horner2.pdf
-          T f = a[n], df = 0, d2f = 0;
+          long double f = a[n], df = 0, d2f = 0;
           for (int i = n - 1; i >= 0; --i) { 
             d2f = df + x*d2f;
             df = f + x*df;
@@ -577,10 +604,10 @@ namespace utils {
       
           for (int i = 2; i >= 0; --i) {
             /*T t;
-            roots.push_back(t = A*std::cos((phi - M_2PI*i)/3) - b/3);
+            roots.push_back(t = A*std::cos((phi - m_2pi*i)/3) - b/3);
             std::cerr << "cubic::x=" << t << '\n';
             */
-           roots.push_back(A*std::cos((phi - M_2PI*i)/3) - b/3);
+           roots.push_back(A*std::cos((phi - m_2pi*i)/3) - b/3);
           }
         }
       } else {
@@ -766,9 +793,7 @@ namespace utils {
   */
 
   int flt(const double & target, double *arr, const int &numElems) {
-    
-    int low = 0, high = numElems, mid;
-
+       
     /* We only need to test the upper boundary; if the lower boundary is
      * breached if 0 is returned. The calling functions thus must test
      * against flt index < 1. */
@@ -776,7 +801,9 @@ namespace utils {
     if (target > arr[numElems-1]) return -1;
     
     if (target < arr[0]) return 0;
-    
+   
+    int low = 0, high = numElems, mid;
+ 
     while (low != high) {
       
       mid = (low + high) >> 1;
