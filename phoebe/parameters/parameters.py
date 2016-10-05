@@ -8,6 +8,7 @@ from phoebe.constraints.expression import ConstraintVar
 from phoebe.parameters.twighelpers import _uniqueid_to_uniquetwig
 from phoebe.parameters.twighelpers import _twig_to_uniqueid
 from phoebe.frontend import tabcomplete, plotting, mpl_animate
+from phoebe.frontend.help import help
 
 import random
 import string
@@ -2960,6 +2961,17 @@ class Parameter(object):
         :return: an ordered dictionary of tag properties
         """
         return OrderedDict([(k, getattr(self, k)) for k in _meta_fields_all if k not in ignore])
+
+    @property
+    def help(self):
+        """
+        """
+        return self.get_help()
+
+    def get_help(self):
+        """
+        """
+        return help(self, empty_if_none=True)
 
     @property
     def qualifier(self):

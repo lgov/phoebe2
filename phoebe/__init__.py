@@ -72,6 +72,7 @@ from .constants import *
 from .parameters import *
 from .parameters import hierarchy, component, compute, constraint, dataset
 from .frontend.bundle import Bundle
+from .frontend.help import help
 from .backend import *
 import utils as utils
 
