@@ -1,4 +1,7 @@
 
+from pydoc import pager
+from phoebe import conf
+
 class HelpEntry(object):
     def __init__(self, msg, include_choices=False, **kwargs):
         self.meta = kwargs
@@ -70,10 +73,13 @@ def help(entry, empty_if_none=False, **kwargs):
                     continue
                 msg += "\n\t{}".format(choice.msg)
 
-            return msg
-
         else:
-            return match.msg
+            msg = match.msg
+
+        if conf.interactive:
+            return pager(msg)
+        else:
+            return msg
 
 
 
