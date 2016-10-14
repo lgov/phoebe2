@@ -181,3 +181,100 @@ def envelope(component, **kwargs):
     constraints = []
 
     return ParameterSet(params), constraints
+
+
+def custom_mesh(component, **kwargs):
+    """
+    """
+    if not conf.devel:
+        raise NotImplementedError("'custom_mesh' component not officially supported for this release.  Enable developer mode to test.")
+
+    params = []
+
+
+    if 'filename' in kwargs.keys():
+        # then load in the actual vertex information
+
+        filename = kwargs.pop('filename')
+        extension = filename.split('.')[-1]
+
+        if extension == 'obj':
+            logger.info("loading vertex information from {}".format(filename))
+
+            xs, ys, zs = [], [], []
+            nxs, nys, nzs = [], [], []
+            f = open(filename, 'r')
+            for line in f:
+                split = line.strip().split()
+                if not len(split):
+                    continue
+
+                if split[0] == 'v':
+                    xs.append(float(split[1]))
+                    ys.append(float(split[2]))
+                    zs.append(float(split[3]))
+                elif split[0] == 'nv':
+                    xs.append(float(split[1]))
+                    ys.append(float(split[2]))
+                    zs.append(float(split[3]))
+
+        else:
+            raise NotImplementedError("file with '{}' extension not supported".format(extension))
+
+        xs = np.array(xs)
+        ys = np.array(ys)
+        zs = np.array(zs)
+
+        nxs = np.array(nxs)
+        nys = np.array(nys)
+        nzs = np.array(nzs)
+
+        xs -= np.median(xs)
+        ys -= np.median(ys)
+        zs -= np.median(zs)
+
+        xrange = xs.max() - xs.min()
+        yrange = ys.max() - ys.min()
+        zrange = zs.max() - zs.min()
+
+        maxrange = max([xrange, yrange, zrange])
+
+        xs /= maxrange
+        ys /= maxrange
+        zs /= maxrange
+
+        nxs /= maxrange
+        nys /= maxrange
+        nzs /= maxrange
+
+
+
+        kwargs.setdefault('xs', xs)
+        kwargs.setdefault('ys', ys)
+        kwargs.setdefault('zs', zs)
+
+        kwargs.setdefault('nxs', nxs)
+        kwargs.setdefault('nys', nys)
+        kwargs.setdefault('nzs', nzs)
+
+
+    params += [FloatArrayParameter(qualifier='xs', value=kwargs.get('xs', []), default_unit=u.dimensionless_unscaled, description='X coordinate of triangle vertices')]
+    params += [FloatArrayParameter(qualifier='ys', value=kwargs.get('ys', []), default_unit=u.dimensionless_unscaled, description='Y coordinate of triangle vertices')]
+    params += [FloatArrayParameter(qualifier='zs', value=kwargs.get('zs', []), default_unit=u.dimensionless_unscaled, description='Z coordinate of triangle vertices')]
+
+    params += [FloatArrayParameter(qualifier='nxs', value=kwargs.get('nxs', []), default_unit=u.dimensionless_unscaled, description='X coordinate of normals at triangle vertices')]
+    params += [FloatArrayParameter(qualifier='nys', value=kwargs.get('nys', []), default_unit=u.dimensionless_unscaled, description='Y coordinate of normals at triangle vertices')]
+    params += [FloatArrayParameter(qualifier='nzs', value=kwargs.get('nzs', []), default_unit=u.dimensionless_unscaled, description='Z coordinate of normals at triangle vertices')]
+
+    params += [FloatParameter(qualifier='scale', value=kwargs.get('scale', 1.0), default_unit=u.solRad, description='scaling factor (length of longest axes)')]
+    params += [FloatParameter(qualifier='mass', value=kwargs.get('mass', 1.0), default_unit=u.solMass, description='mass of object')]
+
+    params += [FloatParameter(qualifier='alpha', value=kwargs.get('etheta', 0.0), default_unit=u.rad, description='')]
+    params += [FloatParameter(qualifier='beta', value=kwargs.get('etheta', 0.0), default_unit=u.rad, description='')]
+    params += [FloatParameter(qualifier='gamma', value=kwargs.get('etheta', 0.0), default_unit=u.rad, description='')]
+
+
+    constraints = []
+
+    return ParameterSet(params), constraints
+
