@@ -825,10 +825,14 @@ class Bundle(ParameterSet):
 
         # Handle inter-PS constraints
         starrefs = hier_param.get_stars()
-        for component in self.hierarchy.get_stars():
-            if len(starrefs)==1:
+        meshablerefs = hier_param.get_meshables()
+        for component in self.hierarchy.get_meshables():
+            # if len(starrefs)==1:
+            if len(meshablerefs)==1:
                 pass
                 # we'll do the potential constraint either way
+            elif self.hierarchy.get_kind_of(component) in ['envelope']:
+                continue
             else:
                 logger.info('re-creating mass constraint for {}'.format(component))
                 # TODO: will this cause problems if the constraint has been flipped?
@@ -900,7 +904,7 @@ class Bundle(ParameterSet):
                                             constraint=self._default_label('incl_aligned', context='constraint'))
 
 
-            if not self.hierarchy.is_overcontact(component) or self.hierarchy.get_kind_of(component)=='envelope':
+            if (self.hierarchy.get_kind_of(component)=='star' and not self.hierarchy.is_overcontact(component)) or self.hierarchy.get_kind_of(component)=='envelope':
                 # potential constraint shouldn't be done for STARS in OVERCONTACTS
 
                 logger.info('re-creating potential constraint for {}'.format(component))
@@ -1076,6 +1080,9 @@ class Bundle(ParameterSet):
                     return False,\
                         '{} is overflowing L2 or L3 at periastron'.format(component)
 
+            elif kind in ['custom_mesh']:
+                pass
+
             else:
                 raise NotImplementedError("checks not implemented for type '{}'".format(kind))
 
@@ -1088,21 +1095,26 @@ class Bundle(ParameterSet):
 
                 starrefs = hier.get_children_of(orbitref)
                 comp0 = hier.get_primary_or_secondary(starrefs[0], return_ind=True)
+
+                if hier.get_kind_of(comp0) in ['star']:
+                    q0 = roche.q_for_component(q, comp0)
+                    F0 = self.get_value(qualifier='syncpar', component=starrefs[0], context='component')
+                    pot0 = self.get_value(qualifier='pot', component=starrefs[0], context='component')
+                    pot0 = roche.pot_for_component(pot0, q0, comp0)
+                    xrange0 = libphoebe.roche_xrange(q0, F0, 1.0-ecc, pot0, choice=0)
+                else:
+                    xrange0 = (0,0) # just make sure it'll pass
+
                 comp1 = hier.get_primary_or_secondary(starrefs[1], return_ind=True)
-                q0 = roche.q_for_component(q, comp0)
-                q1 = roche.q_for_component(q, comp1)
 
-                F0 = self.get_value(qualifier='syncpar', component=starrefs[0], context='component')
-                F1 = self.get_value(qualifier='syncpar', component=starrefs[1], context='component')
-
-                pot0 = self.get_value(qualifier='pot', component=starrefs[0], context='component')
-                pot0 = roche.pot_for_component(pot0, q0, comp0)
-
-                pot1 = self.get_value(qualifier='pot', component=starrefs[1], context='component')
-                pot1 = roche.pot_for_component(pot1, q1, comp1)
-
-                xrange0 = libphoebe.roche_xrange(q0, F0, 1.0-ecc, pot0, choice=0)
-                xrange1 = libphoebe.roche_xrange(q1, F1, 1.0-ecc, pot1, choice=0)
+                if hier.get_kind_of(comp1) in ['star']:
+                    pot1 = self.get_value(qualifier='pot', component=starrefs[1], context='component')
+                    pot1 = roche.pot_for_component(pot1, q1, comp1)
+                    q1 = roche.q_for_component(q, comp1)
+                    F1 = self.get_value(qualifier='syncpar', component=starrefs[1], context='component')
+                    xrange1 = libphoebe.roche_xrange(q1, F1, 1.0-ecc, pot1, choice=0)
+                else:
+                    xrange1 = (0,0) # just make sure it'll pass
 
                 if xrange0[1]+xrange1[1] > 1.0-ecc:
                     return False,\

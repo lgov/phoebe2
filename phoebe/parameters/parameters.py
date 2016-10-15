@@ -4728,7 +4728,7 @@ class HierarchyParameter(StringParameter):
 
         l = re.findall(r"[\w']+", self.get_value())
         # now search for indices of star and take the next entry from this flat list
-        meshables = [l[i+1] for i,s in enumerate(l) if s in ['star', 'envelope']]
+        meshables = [l[i+1] for i,s in enumerate(l) if s in ['star', 'envelope', 'custom_mesh']]
 
         # now we want to remove any star which has a sibling envelope
         has_sibling_envelope = []

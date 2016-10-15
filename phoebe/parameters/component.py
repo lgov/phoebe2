@@ -269,9 +269,15 @@ def custom_mesh(component, **kwargs):
     params += [FloatParameter(qualifier='scale', value=kwargs.get('scale', 1.0), default_unit=u.solRad, description='scaling factor (length of longest axes)')]
     params += [FloatParameter(qualifier='mass', value=kwargs.get('mass', 1.0), default_unit=u.solMass, description='mass of object')]
 
-    params += [FloatParameter(qualifier='alpha', value=kwargs.get('etheta', 0.0), default_unit=u.rad, description='')]
-    params += [FloatParameter(qualifier='beta', value=kwargs.get('etheta', 0.0), default_unit=u.rad, description='')]
-    params += [FloatParameter(qualifier='gamma', value=kwargs.get('etheta', 0.0), default_unit=u.rad, description='')]
+    # params += [FloatParameter(qualifier='alpha', value=kwargs.get('etheta', 0.0), default_unit=u.rad, description='')]
+    # params += [FloatParameter(qualifier='beta', value=kwargs.get('etheta', 0.0), default_unit=u.rad, description='')]
+    # params += [FloatParameter(qualifier='gamma', value=kwargs.get('etheta', 0.0), default_unit=u.rad, description='')]
+
+    params += [FloatParameter(qualifier='incl', visible_if='hierarchy.is_overcontact:False', value=kwargs.get('incl', 90), default_unit=u.deg, description='Inclination of the stellar rotation axis')]
+
+    params += [FloatParameter(qualifier='syncpar', visible_if='hierarchy.is_overcontact:False,hierarchy.is_binary:True', value=kwargs.get('syncpar', 1.0), default_unit=u.dimensionless_unscaled, limits=(0.0,None), description='Synchronicity parameter')]
+    params += [FloatParameter(qualifier='period', visible_if='hierarchy.is_overcontact:False', value=kwargs.get('period', 1.0), default_unit=u.d, limits=(0.0,None), description='Rotation period')]
+    params += [FloatParameter(qualifier='freq', visible_if='hierarchy.is_overcontact:False', value=kwargs.get('freq', 2*np.pi), default_unit=u.rad/u.d, limits=(0.0,None), description='Rotation frequency')]
 
 
     constraints = []
