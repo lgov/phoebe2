@@ -109,6 +109,7 @@ _forbidden_labels += ['lc', 'lc_dep', 'lc_syn',
 _forbidden_labels += ['value', 'adjust', 'prior', 'posterior', 'default_unit',
                       'unit', 'timederiv', 'visible_if', 'description']
 # _forbidden_labels += ['parent', 'child']
+_forbidden_labels += ['star', 'envelope', 'custom_mesh', 'orbit']
 _forbidden_labels += ['protomesh', 'pbmesh']
 _forbidden_labels += ['component']
 _forbidden_labels += ['bol']
