@@ -1107,8 +1107,9 @@ class Body(object):
     #     return {'normal_intensities': normal_intensities,
     #             'intensities': intensities}
 
-class CustomBody(Body):
-    def __init__(self, masses, sma, ecc, freq_rot, teff, abun,
+class Custom_Mesh(Body):
+    def __init__(self, masses, sma, ecc, freq_rot,
+                 xs, ys, zs, triangles, scale,
                  dynamics_method='keplerian',
                  ind_self=0, ind_sibling=1, comp_no=1,
                  atm='blackbody', datasets=[], passband={},
@@ -1127,7 +1128,7 @@ class CustomBody(Body):
         :return: instantiated :class:`CustomBody` object
         :raises NotImplementedError: because it isn't
         """
-        super(CustomBody, self).__init__(comp_no, ind_self, ind_sibling,
+        super(Custom_Mesh, self).__init__(comp_no, ind_self, ind_sibling,
                                          masses, ecc,
                                          atm, datasets, passband,
                                          intens_weighting,
@@ -1135,14 +1136,24 @@ class CustomBody(Body):
                                          dynamics_method=dynamics_method)
 
 
-        self.teff = teff
-        self.abun = abun
 
+        if not conf.devel:
+            raise NotImplementedError
+
+        # self.teff = teff
+        self.abun = None
+        self.frac_refl = 0.0
 
         self.sma = sma
+        self.freq_rot = freq_rot
+        self.features = []
 
-
-        raise NotImplementedError
+        self.mesh_method = None
+        self._xs = xs
+        self._ys = ys
+        self._zs = zs
+        self._triangles = triangles
+        self._scale = scale
 
 
     @classmethod
@@ -1159,13 +1170,13 @@ class CustomBody(Body):
         hier = b.hierarchy
 
         if not len(hier.get_value()):
-            raise NotImplementedError("Star meshing requires a hierarchy to exist")
+            raise NotImplementedError("Custom_Mesh meshing requires a hierarchy to exist")
 
 
         label_self = component
         label_sibling = hier.get_stars_of_sibling_of(component)
         label_orbit = hier.get_parent_of(component)
-        starrefs  = hier.get_stars()
+        starrefs  = hier.get_dynamical_components()
 
         ind_self = starrefs.index(label_self)
         # for the sibling, we may need to handle a list of stars (ie in the case of a hierarchical triple)
@@ -1175,24 +1186,33 @@ class CustomBody(Body):
         self_ps = b.filter(component=component, context='component')
         freq_rot = self_ps.get_value('freq', unit=u.rad/u.d)
 
-        teff = b.get_value('teff', component=component, context='component', unit=u.K)
+        # teff = b.get_value('teff', component=component, context='component', unit=u.K)
 
-        abun = b.get_value('abun', component=component, context='component')
+        # abun = b.get_value('abun', component=component, context='component')
 
         masses = [b.get_value('mass', component=star, context='component', unit=u.solMass) for star in starrefs]
         sma = b.get_value('sma', component=label_orbit, context='component', unit=u.solRad)
         ecc = b.get_value('ecc', component=label_orbit, context='component')
 
         # TODO: retrieve atm, ld_func, ld_coeffs
-        atm = 'blackbody'
-        ld_func = {}
-        ld_coeffs = {}
-        passband = {}
-        intens_weighting = {}
+        # atm = 'blackbody'
+        # ld_func = {}
+        # ld_coeffs = {}
+        # passband = {}
+        # intens_weighting = {}
 
-        return cls(masses, sma, ecc, freq_rot, teff, abun, dynamics_method,
+        xs = b.get_value('xs', component=star, context='component')
+        ys = b.get_value('ys', component=star, context='component')
+        zs = b.get_value('zs', component=star, context='component')
+
+        triangles = b.get_value('triangles', component=star, context='component')
+        scale = b.get_value('scale', component=star, context='component', unit=u.solRad)
+
+        return cls(masses, sma, ecc, freq_rot,
+                   xs, ys, zs, triangles, scale,
+                   dynamics_method,
                    ind_self, ind_sibling, comp_no,
-                   atm, datasets, passband, intens_weighting, ld_func, ld_coeffs)
+                   datasets)
 
 
     @property
@@ -1224,15 +1244,39 @@ class CustomBody(Body):
         :raises NotImplementedError: because it isn't
         """
 
-        # if we don't provide instantaneous masses or smas, then assume they are
-        # not time dependent - in which case they were already stored in the init
-        masses = kwargs.get('masses', self.masses)  #solMass
-        sma = kwargs.get('sma', self.sma)  # Rsol (same units as coordinates)
-        q = self.q  # NOTE: this is automatically flipped to be 1./q for secondary components
+        new_mesh = mesh.obj_to_mesh_dict(self._xs, self._ys, self._zs, self._triangles)
 
-        raise NotImplementedError
+        return new_mesh, self._scale, []
 
-        return new_mesh, sma, mesh_args
+    def _compute_instantaneous_quantities(self, xs, ys, zs, **kwargs):
+        """
+        TODO: add documentation
+        """
+        pass
+
+    def _fill_abun(self, mesh=None, **kwargs):
+        """
+        """
+        if mesh is None:
+            mesh = self.mesh
+
+        pass
+
+    def _fill_loggs(self, mesh=None, ignore_effects=False):
+        """
+        """
+        if mesh is None:
+            mesh = self.mesh
+
+        pass
+
+    def _fill_gravs(self, mesh=None, **kwargs):
+        """
+        """
+        if mesh is None:
+            mesh = self.mesh
+
+        pass
 
     def _fill_teffs(self, ignore_effects=False, **kwargs):
         """
@@ -1240,8 +1284,8 @@ class CustomBody(Body):
 
         :raises NotImplementedError: because it isn't
         """
-
-        self.mesh.update_columns(teffs=self.teff)
+        pass
+        # self.mesh.update_columns(teffs=self.teff)
 
     def _populate_ifm(self, dataset, **kwargs):
         """
@@ -1392,7 +1436,7 @@ class Star(Body):
         label_self = component
         label_sibling = hier.get_stars_of_sibling_of(component)
         label_orbit = hier.get_parent_of(component)
-        starrefs  = hier.get_stars()
+        starrefs  = hier.get_dynamical_components()
 
         ind_self = starrefs.index(label_self)
         # for the sibling, we may need to handle a list of stars (ie in the case of a hierarchical triple)

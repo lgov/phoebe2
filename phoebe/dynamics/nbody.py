@@ -95,7 +95,7 @@ def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, use_k
     gr = computeps.get_value('gr', check_visible=False, **kwargs)
     integrator = computeps.get_value('integrator', check_visible=False, **kwargs)
 
-    starrefs = hier.get_stars()
+    starrefs = hier.get_dynamical_components()
     orbitrefs = hier.get_orbits() if use_kepcart else [hier.get_parent_of(star) for star in starrefs]
 
     def mean_anom(t0, t0_perpass, period):

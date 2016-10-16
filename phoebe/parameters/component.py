@@ -203,6 +203,8 @@ def custom_mesh(component, **kwargs):
 
             xs, ys, zs = [], [], []
             nxs, nys, nzs = [], [], []
+            triangles = []
+            # triangles_normals = []
             f = open(filename, 'r')
             for line in f:
                 split = line.strip().split()
@@ -213,21 +215,32 @@ def custom_mesh(component, **kwargs):
                     xs.append(float(split[1]))
                     ys.append(float(split[2]))
                     zs.append(float(split[3]))
-                elif split[0] == 'nv':
-                    xs.append(float(split[1]))
-                    ys.append(float(split[2]))
-                    zs.append(float(split[3]))
+                elif split[0] == 'vn':
+                    nxs.append(float(split[1]))
+                    nys.append(float(split[2]))
+                    nzs.append(float(split[3]))
+                elif split[0] == 'f':
+                    triangles.append([int(float(split[1].split('/')[0]))-1, int(float(split[2].split('/')[0]))-1, int(float(split[3].split('/')[0]))-1])
+                    # try:
+                        # triangles_normals.append([int(float(split[1].split('/')[1]))-1, int(float(split[2].split('/')[1]))-1, int(float(split[3].split('/')[1]))-1])
+                    # except:
+                        # print split
+                        # exit()
 
         else:
             raise NotImplementedError("file with '{}' extension not supported".format(extension))
+
+        triangles = np.array(triangles)
+        # triangles_normals = np.array(triangles_normals)
 
         xs = np.array(xs)
         ys = np.array(ys)
         zs = np.array(zs)
 
-        nxs = np.array(nxs)
-        nys = np.array(nys)
-        nzs = np.array(nzs)
+        # nxs = np.array(nxs)
+        # nys = np.array(nys)
+        # nzs = np.array(nzs)
+
 
         xs -= np.median(xs)
         ys -= np.median(ys)
@@ -243,9 +256,9 @@ def custom_mesh(component, **kwargs):
         ys /= maxrange
         zs /= maxrange
 
-        nxs /= maxrange
-        nys /= maxrange
-        nzs /= maxrange
+        # nxs /= maxrange
+        # nys /= maxrange
+        # nzs /= maxrange
 
 
 
@@ -253,18 +266,22 @@ def custom_mesh(component, **kwargs):
         kwargs.setdefault('ys', ys)
         kwargs.setdefault('zs', zs)
 
-        kwargs.setdefault('nxs', nxs)
-        kwargs.setdefault('nys', nys)
-        kwargs.setdefault('nzs', nzs)
+        # kwargs.setdefault('nxs', nxs)
+        # kwargs.setdefault('nys', nys)
+        # kwargs.setdefault('nzs', nzs)
+
+        kwargs.setdefault('triangles', triangles)
 
 
     params += [FloatArrayParameter(qualifier='xs', value=kwargs.get('xs', []), default_unit=u.dimensionless_unscaled, description='X coordinate of triangle vertices')]
     params += [FloatArrayParameter(qualifier='ys', value=kwargs.get('ys', []), default_unit=u.dimensionless_unscaled, description='Y coordinate of triangle vertices')]
     params += [FloatArrayParameter(qualifier='zs', value=kwargs.get('zs', []), default_unit=u.dimensionless_unscaled, description='Z coordinate of triangle vertices')]
 
-    params += [FloatArrayParameter(qualifier='nxs', value=kwargs.get('nxs', []), default_unit=u.dimensionless_unscaled, description='X coordinate of normals at triangle vertices')]
-    params += [FloatArrayParameter(qualifier='nys', value=kwargs.get('nys', []), default_unit=u.dimensionless_unscaled, description='Y coordinate of normals at triangle vertices')]
-    params += [FloatArrayParameter(qualifier='nzs', value=kwargs.get('nzs', []), default_unit=u.dimensionless_unscaled, description='Z coordinate of normals at triangle vertices')]
+    # params += [FloatArrayParameter(qualifier='nxs', value=kwargs.get('nxs', []), default_unit=u.dimensionless_unscaled, description='X coordinate of normals at triangle vertices')]
+    # params += [FloatArrayParameter(qualifier='nys', value=kwargs.get('nys', []), default_unit=u.dimensionless_unscaled, description='Y coordinate of normals at triangle vertices')]
+    # params += [FloatArrayParameter(qualifier='nzs', value=kwargs.get('nzs', []), default_unit=u.dimensionless_unscaled, description='Z coordinate of normals at triangle vertices')]
+
+    params += [IntArrayParameter(qualifier='triangles', value=kwargs.get('triangles', []), description='Indices of vertices to make each triangle')]
 
     params += [FloatParameter(qualifier='scale', value=kwargs.get('scale', 1.0), default_unit=u.solRad, description='scaling factor (length of longest axes)')]
     params += [FloatParameter(qualifier='mass', value=kwargs.get('mass', 1.0), default_unit=u.solMass, description='mass of object')]

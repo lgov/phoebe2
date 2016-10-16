@@ -49,7 +49,7 @@ def dynamics_from_bundle(b, times, compute=None, return_euler=False, **kwargs):
     t0 = b.get_value('t0', context='system', unit=u.d)
 
     hier = b.hierarchy
-    starrefs = hier.get_stars()
+    starrefs = hier.get_dynamical_components()
     orbitrefs = hier.get_orbits()
     s = b.filter(context='component')
 

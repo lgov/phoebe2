@@ -30,6 +30,50 @@ def compute_volume(sizes, centers, normals):
     return np.sum(sizes*((centers*normals).sum(axis=1)/normal_mags)/3)
 
 
+def compute_areas(vertices_per_triangle):
+
+    # TODO: this could be GREATLY optimized - its currently only used for Custom_Mesh
+    areas = []
+
+    for vertices in vertices_per_triangle:
+
+        side1 = sqrt((vertices[0][0]-vertices[1][0])**2 + (vertices[0][1]-vertices[1][1])**2 + (vertices[0][2]-vertices[1][2])**2)
+        side2 = sqrt((vertices[0][0]-vertices[2][0])**2 + (vertices[0][1]-vertices[2][1])**2 + (vertices[0][2]-vertices[2][2])**2)
+        side3 = sqrt((vertices[1][0]-vertices[2][0])**2 + (vertices[1][1]-vertices[2][1])**2 + (vertices[1][2]-vertices[2][2])**2)
+        s = 0.5*(side1 + side2 + side3)
+
+        dsigma_t_sq = s*(s-side1)*(s-side2)*(s-side3)
+        dsigma_t = sqrt(dsigma_t_sq) if dsigma_t_sq > 0 else 0.0
+
+        areas.append(dsigma_t)
+
+    return np.array(areas)
+
+def compute_centers(vertices_per_triangle):
+
+    # TODO: this could be GREATLY optimized - its currently only used for Custom_Mesh
+
+    centers = []
+
+    for vertices in vertices_per_triangle:
+        x = np.mean(vertices[:,0])
+        y = np.mean(vertices[:,1])
+        z = np.mean(vertices[:,2])
+        centers.append(np.array([x, y, z]))
+
+    return np.array(centers)
+
+def compute_normals(vertices_per_triangle):
+
+    # TODO: this could be GREATLY optimized - its currently only used for Custom_Mesh
+
+    normals = []
+
+    for vertices in vertices_per_triangle:
+        normals.append(np.cross(vertices[0], vertices[1]))
+
+    return np.array(normals)
+
 def euler_trans_matrix(etheta, elongan, eincl):
     """
     Get the transformation matrix to translate/rotate a mesh according to
@@ -113,6 +157,28 @@ def transform_velocity_array(array, pos_array, vel, euler, rotation_vel=(0,0,0))
     new_vel = np.dot(np.asarray(array)+rotation_component, trans_matrix.T) + orbital_component
 
     return new_vel
+
+
+def obj_to_mesh_dict(xs, ys, zs, triangles):
+    """
+    """
+    new_mesh = {}
+
+    new_mesh['compute_at_vertices'] = False
+    new_mesh['vertices'] = np.array([xs, ys, zs]).reshape(-1, 3)
+    # new_mesh['vnormals'] = np.array([nxs, nys, nzs]).reshape(-1, 3)
+    new_mesh['triangles'] = triangles
+
+    vertices_per_triangle = new_mesh['vertices'][new_mesh['triangles']]
+    new_mesh['centers'] = compute_centers(vertices_per_triangle)
+    new_mesh['tnormals'] = compute_normals(vertices_per_triangle)
+    new_mesh['areas'] = compute_areas(vertices_per_triangle)
+    new_mesh['volume'] = compute_volume(new_mesh['areas'], new_mesh['centers'], new_mesh['tnormals'])
+
+    new_mesh['velocities'] = np.zeros(new_mesh['centers'].shape)
+
+
+    return new_mesh
 
 
 def wd_grid_to_mesh_dict(the_grid, q, F, d):

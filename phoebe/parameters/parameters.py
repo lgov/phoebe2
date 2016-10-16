@@ -1848,7 +1848,8 @@ class ParameterSet(object):
 
         # the dataset tag can appear in the compute context as well, so if the
         # context tag isn't in kwargs, let's default it to dataset or model
-        kwargs.setdefault('context', ['dataset', 'model'])
+        if len(self.contexts):
+            kwargs.setdefault('context', ['dataset', 'model', 'component'])
 
         ps = self.filter(twig=twig,
                          **{k: v for k, v in kwargs.items() if k != 'time'})
@@ -1933,7 +1934,7 @@ class ParameterSet(object):
         # and z are all the coordinates (then we'll plot the triangles).
         # Otherwise, we will continue and can use the generic x, y plotting (ie
         # for flux vs r_proj)
-        if ps.kind in ['mesh', 'mesh_syn'] and \
+        if ps.kind in ['mesh', 'mesh_syn', 'custom_mesh'] and \
                 kwargs.get('x', 'xs') in ['xs', 'ys', 'zs'] and \
                 kwargs.get('y', 'ys') in ['xs', 'ys', 'zs'] and \
                 kwargs.get('z', 'zs') in ['xs', 'ys', 'zs']:
@@ -3819,7 +3820,7 @@ class FloatParameter(Parameter):
         timederiv = kwargs.get('timederiv', None)
         self.set_timederiv(timederiv)
 
-        self.set_value(kwargs.get('value', ''), unit)
+        self.set_value(kwargs.get('value', ''), unit=unit)
 
         self._dict_fields_other = ['description', 'value', 'quantity', 'default_unit', 'limits', 'visible_if', 'copy_for', 'timederiv'] # TODO: add adjust?  or is that a different subclass?
         self._dict_fields = _meta_fields_all + self._dict_fields_other
@@ -4199,7 +4200,7 @@ class FloatArrayParameter(FloatParameter):
         if isinstance(unit, str) or isinstance(unit, unicode):
             unit = u.Unit(str(unit))
 
-        self.set_value(kwargs.get('value', []), unit)
+        self.set_value(kwargs.get('value', []), unit=unit)
 
         self._dict_fields_other = ['description', 'value', 'default_unit', 'visible_if', 'copy_for']
         self._dict_fields = _meta_fields_all + self._dict_fields_other
@@ -4390,7 +4391,7 @@ class ArrayParameter(Parameter):
         if self.context not in ['setting', 'history']:
             self._add_history(redo_func='set_value', redo_kwargs={'value': value, 'uniqueid': self.uniqueid}, undo_func='set_value', undo_kwargs={'value': _orig_value, 'uniqueid': self.uniqueid})
 
-class IntArrayParameter(FloatArrayParameter):
+class IntArrayParameter(ArrayParameter):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('default_unit', u.dimensionless_unscaled)
         super(IntArrayParameter, self).__init__(*args, **kwargs)
@@ -4424,12 +4425,11 @@ class IntArrayParameter(FloatArrayParameter):
     def quantity(self):
         return self.get_quantity()
 
-    @update_if_client
     def get_quantity(self, **kwargs):
         """
         IntParameters don't have units, but we may want a Quantity object returned nonetheless
         """
-        return self.get_value() * u.dimensionless_unscaled
+        return self.get_value(**kwargs) * u.dimensionless_unscaled
 
     @send_if_client
     def set_value(self, value, **kwargs):
@@ -4547,6 +4547,13 @@ class HierarchyParameter(StringParameter):
         """
         """
         return str(self._parse_repr()[0].split(':')[1])
+
+    def get_dynamical_components(self):
+        """
+        """
+        l = re.findall(r"[\w']+", self.get_value())
+        # now search for indices of star and take the next entry from this flat list
+        return [l[i+1] for i,s in enumerate(l) if s in ['star', 'custom_mesh']]
 
     def get_stars(self):
         """

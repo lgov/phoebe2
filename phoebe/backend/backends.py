@@ -727,9 +727,10 @@ def phoebe(b, compute, times=[], as_generator=False, **kwargs):
                 # print "*** this_syn.twigs", this_syn.twigs
                 body = system.get_body(info['component'])
 
-                this_syn['pot'] = body._instantaneous_pot
-                this_syn['rpole'] = roche.potential2rpole(body._instantaneous_pot, body.q, body.ecc, body.F, body._scale, component=body.comp_no)
-                this_syn['volume'] = body.volume
+                if isinstance(body, universe.Star):
+                    this_syn['pot'] = body._instantaneous_pot
+                    this_syn['rpole'] = roche.potential2rpole(body._instantaneous_pot, body.q, body.ecc, body.F, body._scale, component=body.comp_no)
+                    this_syn['volume'] = body.volume
 
                 # TODO: should x, y, z be computed columns of the vertices???
                 # could easily have a read-only property at the ProtoMesh level
@@ -750,9 +751,10 @@ def phoebe(b, compute, times=[], as_generator=False, **kwargs):
                 this_syn['nzs'] = body.mesh.tnormals[:,2]
                 this_syn['mus'] = body.mesh.mus
 
-                this_syn['loggs'] = body.mesh.loggs.centers
-                this_syn['teffs'] = body.mesh.teffs.centers
-                # TODO: include abun? (body.mesh.abuns.centers)
+                if isinstance(body, universe.Star):
+                    this_syn['loggs'] = body.mesh.loggs.centers
+                    this_syn['teffs'] = body.mesh.teffs.centers
+                    # TODO: include abun? (body.mesh.abuns.centers)
 
                 # NOTE: these are computed columns, so are not based on the
                 # "center" coordinates provided by x, y, z, etc, but rather are
