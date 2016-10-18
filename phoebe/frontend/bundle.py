@@ -66,6 +66,31 @@ def _get_add_func(mod, func, return_none_if_not_found=False):
                          .format(mod, func))
 
 
+def _get_compute_func(func):
+    if isinstance(func, str):
+        if hasattr(backends, func):
+            func = getattr(backends, func)
+        else:
+            # try to find in registered plugins
+            for plugin in conf.registered_plugin_modules:
+                if hasattr(plugin, 'backends'):
+                    plugin_mod = getattr(plugin, 'backends')
+                    if hasattr(plugin_mod, func):
+                        func = getattr(plugin_mod, func)
+                        # NOTE: if there is any kind of name-conflict, this will
+                        # simply choose the first one found by looping through
+                        # the registered plugins.  It is up to the user to not
+                        # register conflicting plugins.
+                        break
+
+
+
+    if hasattr(func, '__call__'):
+        return func
+    else:
+        raise ValueError("could not find callable function {}".format(func))
+
+
 class Bundle(ParameterSet):
     """Main container class for PHOEBE 2.
 
@@ -2460,7 +2485,7 @@ class Bundle(ParameterSet):
                 raise KeyError("could not recognize backend from compute: {}".format(compute))
 
             logger.info("running {} backend to create '{}' model".format(computeparams.kind, model))
-            compute_func = getattr(backends, computeparams.kind)
+            compute_func = _get_compute_func(computeparams.kind)
 
             metawargs = {'compute': compute, 'model': model, 'context': 'model'}  # dataset, component, etc will be set by the compute_func
 
