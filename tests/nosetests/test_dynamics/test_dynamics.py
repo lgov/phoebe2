@@ -31,50 +31,6 @@ def _keplerian_v_nbody(b, plot=False):
         assert(np.allclose(nb_vys[ci], k_vys[ci], atol=1e-5))
         assert(np.allclose(nb_vzs[ci], k_vzs[ci], atol=1e-5))
 
-def _phoebe_v_photodynam(b, plot=False):
-    """
-    test a single bundle for phoebe's nbody vs photodynam via the frontend
-    """
-
-    times = np.linspace(0, 100, 1000)
-
-    b.add_dataset('orb', times=times, dataset='orb01', component=b.hierarchy.get_stars())
-    # photodynam and phoebe should have the same nbody defaults... if for some reason that changes,
-    # then this will probably fail
-    b.add_compute('photodynam', compute='pd')
-    # photodynam backend ONLY works with ltte=True, so we will run the phoebe backend with that as well
-    # TODO: remove distortion_method='nbody' once that is supported
-    # NOTE: bs is the exact same as that used in photodynam.  Nbody and rebound are slightly different.
-    b.add_compute('phoebe', dynamics_method='bs', ltte=True, compute='phoebe')
-
-    b.run_compute('pd', model='pdresults')
-    b.run_compute('phoebe', model='phoeberesults')
-
-    for comp in b.hierarchy.get_stars():
-        # TODO: check to see how low we can make atol (or change to rtol?)
-        # TODO: look into justification of flipping x and y for both dynamics (photodynam & phoebe)
-        # TODO: why the small discrepancy (visible especially in y, still <1e-11) - possibly a difference in time0 or just a precision limit in the photodynam backend since loading from a file??
-
-
-        if plot:
-            for k in ['xs', 'ys', 'zs', 'vxs', 'vys', 'vzs']:
-                plt.cla()
-                plt.plot(b.get_value('times', model='phoeberesults', component=comp, unit=u.d), b.get_value(k, model='phoeberesults', component=comp), 'r-')
-                plt.plot(b.get_value('times', model='phoeberesults', component=comp, unit=u.d), b.get_value(k, model='pdresults', component=comp), 'b-')
-                diff = abs(b.get_value(k, model='phoeberesults', component=comp) - b.get_value(k, model='pdresults', component=comp))
-                print "*** max abs ({}): {}".format(k, max(diff))
-                plt.xlabel('t')
-                plt.ylabel(k)
-                plt.show()
-
-        assert(np.allclose(b.get_value('times', dataset='orb01', model='phoeberesults', component=comp, unit=u.d), b.get_value('times', dataset='orb01', model='pdresults', component=comp, unit=u.d), atol=1e-6))
-        assert(np.allclose(b.get_value('xs', dataset='orb01', model='phoeberesults', component=comp, unit=u.AU), b.get_value('xs', dataset='orb01', model='pdresults', component=comp, unit=u.AU), atol=1e-6))
-        assert(np.allclose(b.get_value('ys', dataset='orb01', model='phoeberesults', component=comp, unit=u.AU), b.get_value('ys', dataset='orb01', model='pdresults', component=comp, unit=u.AU), atol=1e-6))
-        assert(np.allclose(b.get_value('zs', dataset='orb01', model='phoeberesults', component=comp, unit=u.AU), b.get_value('zs', dataset='orb01', model='pdresults', component=comp, unit=u.AU), atol=1e-6))
-        assert(np.allclose(b.get_value('vxs', dataset='orb01', model='phoeberesults', component=comp, unit=u.solRad/u.d), b.get_value('vxs', dataset='orb01', model='pdresults', component=comp, unit=u.solRad/u.d), atol=1e-6))
-        assert(np.allclose(b.get_value('vys', dataset='orb01', model='phoeberesults', component=comp, unit=u.solRad/u.d), b.get_value('vys', dataset='orb01', model='pdresults', component=comp, unit=u.solRad/u.d), atol=1e-6))
-        assert(np.allclose(b.get_value('vzs', dataset='orb01', model='phoeberesults', component=comp, unit=u.solRad/u.d), b.get_value('vzs', dataset='orb01', model='pdresults', component=comp, unit=u.solRad/u.d), atol=1e-6))
-
 def _frontend_v_backend(b, plot=False):
     """
     test a single bundle for the frontend vs backend access to both kepler and nbody dynamics
