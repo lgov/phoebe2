@@ -1167,9 +1167,10 @@ class Bundle(ParameterSet):
 
                 if ld_func=='interp':
                     for compute in kwargs.get('computes', self.computes):
-                        atm = self.get_value(qualifier='atm', component=component, compute=compute, context='compute')
-                        if atm != 'ck2004':
-                            return False, "ld_func='interp' only supported by atm='ck2004'"
+                        if 'atm' in self.get_compute(compute=compute).qualifiers:
+                            atm = self.get_value(qualifier='atm', component=component, compute=compute, context='compute')
+                            if atm != 'ck2004':
+                                return False, "ld_func='interp' only supported by atm='ck2004'"
 
         #### WARNINGS ONLY ####
         # let's check teff vs gravb_bol
