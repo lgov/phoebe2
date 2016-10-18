@@ -40,8 +40,22 @@ else:
 
 
 def _get_add_func(mod, func, return_none_if_not_found=False):
-    if isinstance(func, str) and hasattr(mod, func):
-        func = getattr(mod, func)
+    if isinstance(func, str):
+        if hasattr(mod, func):
+            # then use built-in version
+            func = getattr(mod, func)
+        else:
+            # try to find in registered plugins
+            for plugin in conf.registered_plugin_modules:
+                plugin_mod = getattr(plugin, mod.__name__.split('.')[-1])
+                if hasattr(plugin_mod, func):
+                    func = getattr(plugin_mod, func)
+                    # NOTE: if there is any kind of name-conflict, this will
+                    # simply choose the first one found by looping through
+                    # the registered plugins.  It is up to the user to not
+                    # register conflicting plugins.
+                    break
+
 
     if hasattr(func, '__call__'):
         return func

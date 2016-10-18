@@ -39,6 +39,8 @@ class Settings(object):
         if self._devel:
             print("WARNING: developer mode enabled, to disable 'rm ~/.phoebe_devel_enabled' and restart phoebe")
 
+        self._registered_plugins = []
+
     def interactive_on(self):
         self._interactive = True
 
@@ -58,6 +60,28 @@ class Settings(object):
     @property
     def devel(self):
         return self._devel
+
+    @property
+    def registered_plugin_names(self):
+        return self._registered_plugins
+
+    @property
+    def registered_plugin_modules(self):
+        return [self.get_plugin(name) for name in self._registered_plugins]
+
+    def register_plugin(self, plugin_module):
+        if not isinstance(plugin_module, str):
+            plugin_module = plugin_module.__name__
+
+        if plugin_module not in self._registered_plugins:
+            self._registered_plugins.append(plugin_module)
+
+    def get_plugin(self, plugin_module):
+        if not isinstance(plugin_module, str):
+            plugin_module = plugin_module.__name__
+
+        if plugin_module in self.registered_plugin_names:
+            return sys.modules.get(plugin_module, None)
 
 
 
@@ -122,5 +146,16 @@ def devel_on():
 def devel_off():
     conf.devel_off()
 
+def get_registered_plugin_names():
+    return conf.registered_plugin_names
+
+def get_registered_plugin_modules():
+    return conf.registered_plugin_modules
+
+def register_plugin(plugin_module):
+    conf.register_plugin(plugin_module)
+
+def get_plugin(name):
+    return conf.get_plugin(plugin_module)
 
 
