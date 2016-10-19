@@ -98,9 +98,6 @@ def test_binary(plot=False):
     _keplerian_v_nbody(b, plot=plot)
 
     b = phoebe.Bundle.default_binary()
-    _phoebe_v_photodynam(b, plot=plot)
-
-    b = phoebe.Bundle.default_binary()
     _frontend_v_backend(b, plot=plot)
 
 
