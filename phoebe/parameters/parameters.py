@@ -8,7 +8,7 @@ from phoebe.constraints.expression import ConstraintVar
 from phoebe.parameters.twighelpers import _uniqueid_to_uniquetwig
 from phoebe.parameters.twighelpers import _twig_to_uniqueid
 from phoebe.frontend import tabcomplete, plotting, mpl_animate
-from phoebe.frontend.help import help
+from phoebe.frontend.help import phoebehelp as help
 
 import random
 import string

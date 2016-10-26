@@ -31,7 +31,7 @@ _help += [HelpEntry(choice='ck2004', qualifier='atm', msg='test message for choi
 _help += [HelpEntry(choice='blackbody', qualifier='atm', msg='test message for choice:blackbody')]
 
 
-def help(entry, empty_if_none=False, **kwargs):
+def phoebehelp(entry, empty_if_none=False, **kwargs):
     """
     search available help messages and return matching entry.
     """
@@ -47,7 +47,9 @@ def help(entry, empty_if_none=False, **kwargs):
                 k='entry'
             kwargs.setdefault(k, v)
     else:
-        raise ValueError
+        # then access the docstring by calling python's builtin help
+        help(entry)
+        return
 
     matches = [h for h in _help if h.is_match(**kwargs)]
     if len(matches) == 0:
