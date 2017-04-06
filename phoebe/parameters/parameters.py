@@ -7713,7 +7713,14 @@ class HierarchyParameter(StringParameter):
             # an envelope?
             return False
 
-        return self.get_kind_of(component)=='envelope' or (self.get_sibling_of(component, kind='envelope') is not None)
+        kind = self.get_kind_of(component)
+
+        if kind == 'envelope':
+            return True
+        elif kind=='orbit':
+            return False
+        else:
+            return self.get_sibling_of(component, kind='envelope') is not None
 
     def is_contact_binary(self, component):
         """
