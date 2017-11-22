@@ -129,7 +129,9 @@ def as_xi_r(l, m, theta, phi, wt):
     @phi: azimuth, 0 in the x direction, goes from 0 to 2pi
     @wt: omega*t, where omega=2 \pi \nu is the angular frequency, and t is time
 
-    Unscaled radial displacement, see Aerts et al. (2010), the Asteroseismology book
+    Unscaled radial displacement, see
+        Aerts et al. (2010), the Asteroseismology book and 
+        Zima W, A&A 455, 227–234 (2006), Appendix A
     """
     
     return as_Y(l, m, theta, phi) * np.exp(1j*wt) 
@@ -144,7 +146,9 @@ def as_xi_theta(l, m, theta, phi, wt, Omega=0, k=0):
     @Omega: spin parameter
     @k:
 
-    Unscaled co-latitudinal displacement, see Aerts et al. (2010), the Asteroseismology book
+    Unscaled co-latitudinal displacement, see
+        Aerts et al. (2010), the Asteroseismology book and 
+        Zima W, A&A 455, 227–234 (2006), Appendix A
     """
     
     term1 = k * as_dYdtheta(l, m, theta, phi) * np.exp(1j*wt) 
@@ -162,7 +166,9 @@ def as_xi_phi(l, m, theta, phi, wt, Omega=0, k=0):
     @Omega: spin parameter
     @k:
 
-    Unscaled longitudinal displacement, see Aerts et al. (2010), the Asteroseismology book
+    Unscaled longitudinal displacement, see
+        Aerts et al. (2010), the Asteroseismology book and 
+        Zima W, A&A 455, 227–234 (2006), Appendix A
     """
     
     term1 = k/np.sin(theta) * as_dYdphi(l, m, theta, phi) * np.exp(1j*wt) 
