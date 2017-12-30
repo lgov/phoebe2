@@ -79,7 +79,7 @@ def as_norm_atlm1(l, m, Omega, k):
     @Omega: spin parameter (Omega_rot/omega_freq)
     @k:
     
-    Normalization factor for the l+1 term.
+    Normalization factor for the l-1 term.
     """
     
     if Omega < 1e-6:
