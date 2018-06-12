@@ -392,15 +392,23 @@ class Passband:
 
         Returns: mean boosting index using blackbody atmosphere.
         """
+        if not hasattr(Teff, '__iter__'):
+            # convert float to array if need be
+            Teff = np.array((Teff, ))
 
-        if photon_weighted:
-            num   = lambda w: w*self._planck(w, Teff)*self.ptf(w)*self._planck_spi(w, Teff)
-            denom = lambda w: w*self._planck(w, Teff)*self.ptf(w)
-            return integrate.quad(num, self.wl[0], self.wl[-1], epsabs=1e10, epsrel=1e-8)[0]/integrate.quad(denom, self.wl[0], self.wl[-1], epsabs=1e10, epsrel=1e-6)[0]
-        else:
-            num   = lambda w: self._planck(w, Teff)*self.ptf(w)*self._planck_spi(w, Teff)
-            denom = lambda w: self._planck(w, Teff)*self.ptf(w)
-            return integrate.quad(num, self.wl[0], self.wl[-1], epsabs=1e10, epsrel=1e-8)[0]/integrate.quad(denom, self.wl[0], self.wl[-1], epsabs=1e10, epsrel=1e-6)[0]
+        bindex = np.empty_like(Teff)
+
+        for i,Teffi in enumerate(Teff):
+            if photon_weighted:
+                num = lambda w: w*self._planck(w, Teffi)*self.ptf(w)*self._planck_spi(w, Teffi)
+                denom = lambda w: w*self._planck(w, Teffi)*self.ptf(w)
+                bindex[i] = integrate.quad(num, self.wl[0], self.wl[-1], epsabs=1e10, epsrel=1e-8)[0]/integrate.quad(denom, self.wl[0], self.wl[-1], epsabs=1e10, epsrel=1e-6)[0]
+            else:
+                num = lambda w: self._planck(w, Teffi)*self.ptf(w)*self._planck_spi(w, Teffi)
+                denom = lambda w: self._planck(w, Teffi)*self.ptf(w)
+                bindex[i] = integrate.quad(num, self.wl[0], self.wl[-1], epsabs=1e10, epsrel=1e-8)[0]/integrate.quad(denom, self.wl[0], self.wl[-1], epsabs=1e10, epsrel=1e-6)[0]
+
+        return bindex
 
     def compute_blackbody_response(self, Teffs=None):
         """
