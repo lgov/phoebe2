@@ -78,13 +78,7 @@ def phoebehelp(entry, empty_if_none=False, **kwargs):
         else:
             msg = match.msg
 
-        if conf.interactive:
+        if conf._in_interactive_session:
             return pager(msg)
         else:
             return msg
-
-
-
-
-
-

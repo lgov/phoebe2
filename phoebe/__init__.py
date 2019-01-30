@@ -204,6 +204,7 @@ class Settings(object):
         # hasattr(__main__, '__file__') will be True if running a python script, but
         # false if in a python or ipython interpreter.
         # sys.flags.interactive will be 1 if the -i flag is sent to python
+        self._in_interactive_session = not hasattr(__main__, '__file__') or bool(_sys.flags.interactive)
 
         # For now we'll set interactive_constraints to True by default, requiring it to
         # explicitly be disabled.
@@ -213,7 +214,7 @@ class Settings(object):
         # We'll set interactive system checks to be on if running within a Python
         # console, but False if running from within a script
         # See #255 (https://github.com/phoebe-project/phoebe2/issues/255)
-        self._interactive_checks = not hasattr(__main__, '__file__') or bool(_sys.flags.interactive)
+        self._interactive_checks = self._in_interactive_session
 
         # And we'll require explicitly setting developer mode on
         self._devel = False
