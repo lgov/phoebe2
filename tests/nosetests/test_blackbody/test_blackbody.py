@@ -17,33 +17,33 @@ def test_binary(plot=False):
     b.set_value('sma', component='binary', value=100.)
     b.set_value('period', component='binary', value=81.955)
 
-    b.add_dataset('lc', times=np.linspace(0,100,101))
+    b.add_dataset('lc', times=np.linspace(0,100,21))
     b.add_compute('phoebe', compute='phoebe2')
     b.add_compute('legacy', compute='phoebe1')
 
     # set matching atmospheres
-    b.set_value_all('atm@phoebe2', 'extern_planckint')
-    b.set_value_all('atm@phoebe1', 'blackbody')
+    b.set_value_all('atm', 'extern_planckint')
 
     # turn off limb-darkening:
-    b.set_value_all('ld_func_bol', 'logarithmic')
-    b.set_value_all('ld_coeffs_bol', [0.0, 0.0])
+    b.set_value_all('ld_func_bol', 'linear')
+    b.set_value_all('ld_coeffs_bol', [0.0])
 
-    b.set_value_all('ld_func', 'logarithmic')
-    b.set_value_all('ld_coeffs', [0.0, 0.0])
+    b.set_value_all('ld_func', 'linear')
+    b.set_value_all('ld_coeffs', [0.0])
 
-    print "running phoebe2 model..."
-    b.run_compute(compute='phoebe2', reflection_method='none', model='phoebe2model')
-    print "running phoebe1 model..."
+    #turn off albedos (legacy requirement)
+    b.set_value_all('irrad_frac_refl_bol',  0.0)
+
+    if plot: print("running phoebe2 model...")
+    b.run_compute(compute='phoebe2', irrad_method='none', model='phoebe2model')
+    if plot: print("running phoebe1 model...")
     b.run_compute(compute='phoebe1', refl_num=0, model='phoebe1model')
 
     phoebe2_val = b.get_value('fluxes@phoebe2model')
     phoebe1_val = b.get_value('fluxes@phoebe1model')
 
     if plot:
-        b.plot(dataset='lc01')
-        plt.legend()
-        plt.show()
+        b.plot(dataset='lc01', show=True)
 
     assert(np.allclose(phoebe2_val, phoebe1_val, rtol=1e-3, atol=0.))
 
