@@ -1754,7 +1754,7 @@ class Star(Body):
                                    atm=atm,
                                    photon_weighted=intens_weighting=='photon')
 
-                boost_factors = 1.0 + bindex * self.mesh.velocities.for_computations[:,2]/37241.94167601236
+                boost_factors = 1.0 + bindex * self.mesh.velocities.for_computations[:,2]/c.c.to('Rsun/day').value
             else:
                 raise NotImplementedError("boosting_method='{}' not supported".format(self.boosting_method))
 
