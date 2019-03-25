@@ -11,7 +11,7 @@ def test_blackbody_v_ck2004(verbose=False):
 
     # compute mesh at quarter phase to maximize z velocities
     b.add_dataset('lc', times=[0.25])
-    b.add_dataset('mesh', times=[0.25])
+    b.add_dataset('mesh', times=[0.25], columns=['boost_factors@*'])
 
     # fails with logarithmic [0.5, 0.5] and linear [0]
     b.set_value_all('ld_func', 'linear')
