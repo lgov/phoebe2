@@ -1660,7 +1660,7 @@ class Star(Body):
         # triangle's rv by its flux in the requested passband.
         lc_cols = self._populate_lc(dataset, **kwargs)
 
-        # rv per element is just the z-component of the velocity vectory.  Note
+        # rv per element is just the z-component of the velocity vector.  Note
         # the change in sign from our right-handed system to rv conventions.
         # These will be weighted by the fluxes when integrating
 
