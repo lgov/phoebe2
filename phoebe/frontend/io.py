@@ -415,7 +415,7 @@ def load_legacy(filename, add_compute_legacy=True, add_compute_phoebe=True):
 #        raise NotImplementedError
         contact_binary= True
         semi_detached = False
-        eb = phb.Bundle.default_binary(contact_binary=True)
+        eb = phb.Bundle.default_binary(contact_envelope=True)
     elif 'Semi-detached' in morphology:
         semi_detached = True
         contact_binary = False

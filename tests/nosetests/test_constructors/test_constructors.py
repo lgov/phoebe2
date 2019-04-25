@@ -10,8 +10,8 @@ def test_all():
     b = phoebe.default_star()
     print("phoebe.default_binary() ...")
     b = phoebe.default_binary()
-    print("phoebe.default_binary(contact_binary=True) ...")
-    b = phoebe.default_binary(contact_binary=True)
+    print("phoebe.default_binary(contact_envelope=True) ...")
+    b = phoebe.default_binary(contact_envelope=True)
     # b = phoebe.default_triple(inner_as_primary=True)
     # b = phoebe.default_triple(inner_as_primary=False)
 

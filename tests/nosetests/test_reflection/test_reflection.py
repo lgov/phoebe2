@@ -60,7 +60,7 @@ def test_binary(plot=False):
 
 def test_contact(plot=False):
 
-    b = phoebe.default_binary(contact_binary=True)
+    b = phoebe.default_binary(contact_envelope=True)
 
     b.set_value('incl', component='binary', value=45.0)
     b.flip_constraint('pot', solve_for='requiv@primary')
