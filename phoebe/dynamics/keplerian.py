@@ -11,6 +11,8 @@ import logging
 logger = logging.getLogger("DYNAMICS.KEPLERIAN")
 logger.addHandler(logging.NullHandler())
 
+_ltte_scale_factor = (c.R_sun/c.c).to(u.d).value
+
 def dynamics_from_bundle(b, times, compute=None, return_euler=False, **kwargs):
     """
     Parse parameters in the bundle and call :func:`dynamics`.
@@ -306,13 +308,11 @@ def dynamics(times, periods, eccs, smas, t0_perpasses, per0s, long_ans, incls,
                                     t0, vgamma, mass_conservation,
                                     com_pos=pos, com_vel=vel, com_euler=euler)
 
-
-
         return pos, vel, euler
 
 
 
-
+    corrected_times = []
     xs, ys, zs = [], [], []
     vxs, vys, vzs = [], [], []
 
@@ -326,16 +326,16 @@ def dynamics(times, periods, eccs, smas, t0_perpasses, per0s, long_ans, incls,
         # We now have the orbital parameters for a single star/component.
 
         if ltte:
-            #scale_factor = 1.0/c.c.value * c.R_sun.value/(24*3600.)
-            scale_factor = (c.R_sun/c.c).to(u.d).value
-
+            def propertime_barytime_residual(t):
+                pos, vel, euler = binary_dynamics_nested(time, period, ecc, sma, \
             def propertime_barytime_residual(t, time):
                 pos, vel, euler = binary_dynamics_nested(t, period, ecc, sma, \
                                 t0_perpass, per0, long_an, incl, dpdt, deccdt, \
                                 dperdt, components=component, t0=t0, vgamma=vgamma, \
                                 mass_conservation=mass_conservation)
                 z = pos[2]
-                return t - z*scale_factor - time
+                # z is in solRad, z*_ltte_scale_factor will convert to days
+                return t - z*_ltte_scale_factor - time
 
             # Finding that right time is easy with a Newton optimizer:
             propertimes = [newton(propertime_barytime_residual, time, args=(time,)) for \
@@ -354,7 +354,7 @@ def dynamics(times, periods, eccs, smas, t0_perpasses, per0s, long_ans, incls,
                     dperdt, components=component, t0=t0, vgamma=vgamma, \
                     mass_conservation=mass_conservation)
 
-
+        corrected_times.append(propertimes if ltte else times)
         xs.append(pos[0])
         ys.append(pos[1])
         zs.append(pos[2])
@@ -366,25 +366,14 @@ def dynamics(times, periods, eccs, smas, t0_perpasses, per0s, long_ans, incls,
             elongans.append([euler[1]]*len(euler[0]))
             eincls.append([euler[2]]*len(euler[0]))
 
-
-    # if return_euler:
-    #     return times, \
-    #         xs*u.solRad, ys*u.solRad, zs*u.solRad, \
-    #         vxs*u.solRad/u.d, vys*u.solRad/u.d, vzs*u.solRad/u.d, \
-    #         ethetas*u.rad, elongans*u.rad, eincls*u.rad
-    # else:
-    #     return times, \
-    #         xs*u.solRad, ys*u.solRad, zs*u.solRad, \
-    #         vxs*u.solRad/u.d, vys*u.solRad/u.d, vzs*u.solRad/u.d    if return_euler:
-
     # d, solRad, solRad/d, rad
     if return_euler:
-        return times, \
+        return times, corrected_times, \
             xs, ys, zs, \
             vxs, vys, vzs, \
             ethetas, elongans, eincls
     else:
-        return times, \
+        return times, corrected_times, \
             xs, ys, zs, \
             vxs, vys, vzs
 
