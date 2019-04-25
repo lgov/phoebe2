@@ -7118,7 +7118,10 @@ class HierarchyParameter(StringParameter):
         except ValueError:
             for j,substructure in enumerate(structure):
                 if isinstance(substructure, list):
-                    return self._recurse_find_trace(substructure, item, trace+[j])
+                    trace_return = self._recurse_find_trace(substructure, item, trace+[j])
+                    if trace_return is not None: return trace_return
+
+            return None
         else:
             return trace+[i]
 
@@ -7142,6 +7145,9 @@ class HierarchyParameter(StringParameter):
         structure = self._parse_repr()
 
         trace = self._recurse_find_trace(structure, our_item)
+
+        if trace is None:
+            raise ValueError("could not find hierarchy trace of {} in structure {}".format(our_item, structure))
 
         return structure, trace, our_item
 
@@ -7745,7 +7751,11 @@ class HierarchyParameter(StringParameter):
         if len(self.get_stars())==1:
             return False
 
-        return self.get_kind_of(self.get_parent_of(component))=='orbit'
+        parent = self.get_parent_of(component)
+        if parent is None:
+            return True
+        else:
+            return self.get_kind_of(self.get_parent_of(component))=='orbit'
 
     def is_binary(self, component):
         """

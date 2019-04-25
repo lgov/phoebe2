@@ -393,6 +393,16 @@ def default_triple(*args, **kwargs):
 
 default_triple.__doc__ = Bundle.default_triple.__doc__
 
+def default_quadruple(*args, **kwargs):
+    return Bundle.default_quadruple(*args, **kwargs)
+
+default_triple.__doc__ = Bundle.default_quadruple.__doc__
+
+def default_doubledouble(*args, **kwargs):
+    return Bundle.default_doubledouble(*args, **kwargs)
+
+default_triple.__doc__ = Bundle.default_doubledouble.__doc__
+
 # Shortcuts to settings
 def reset_settings():
     """

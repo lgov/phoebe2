@@ -502,7 +502,7 @@ class Bundle(ParameterSet):
 
     @classmethod
     def default_binary(cls, starA='primary', starB='secondary', orbit='binary',
-                       contact_binary=False, force_build=False):
+                       contact_envelope=None, force_build=False):
         """
         For convenience, this function is available at the top-level as
         <phoebe.default_binary> as well as
@@ -526,9 +526,10 @@ class Bundle(ParameterSet):
             the secondary component.
         * `orbit` (string, optional, default='binary'): the label to be set for
             the binary component.
-        * `contact_binary` (bool, optional, default=False): whether to also
-            add an envelope (with component='contact_envelope') and set the
-            hierarchy to a contact binary system.
+        * `contact_envelope` (string or None or bool, optional, default=None):
+            whether to also add an envelope (with component=`contact_envelope`
+            if provided as a string, otherwise 'contact_envelope') and set
+            the hierarchy to a contact binary system.
         * `force_build` (bool, optional, default=False): whether to force building
             the bundle from scratch.  If False, pre-cached files will be loaded
             whenever possible to save time.
@@ -538,7 +539,7 @@ class Bundle(ParameterSet):
         * an instantiated <phoebe.frontend.bundle.Bundle> object.
         """
         if not force_build and not conf.devel:
-            if contact_binary:
+            if contact_envelope:
                 b = cls.open(os.path.join(_bundle_cache_dir, 'default_contact_binary.bundle'))
             else:
                 b = cls.open(os.path.join(_bundle_cache_dir, 'default_binary.bundle'))
@@ -553,6 +554,8 @@ class Bundle(ParameterSet):
                 b.rename_component(secondary, starB)
             if orbit != 'binary':
                 b.rename_component('binary', 'orbit')
+            if contact_envelope and contact_envelope != 'contact_envelope':
+                b.rename_component('contact_envelope', contact_envelope)
 
             return b
 
@@ -560,7 +563,7 @@ class Bundle(ParameterSet):
         # IMPORTANT NOTE: if changing any of the defaults for a new release,
         # make sure to update the cached files (see frontend/default_bundles
         # directory for script to update all cached bundles)
-        if contact_binary:
+        if contact_envelope:
             orbit_defaults = {'sma': 3.35, 'period': 0.5}
             star_defaults = {'requiv': 1.5}
         else:
@@ -569,13 +572,13 @@ class Bundle(ParameterSet):
         b.add_star(component=starA, **star_defaults)
         b.add_star(component=starB, **star_defaults)
         b.add_orbit(component=orbit, **orbit_defaults)
-        if contact_binary:
-            b.add_component('envelope', component='contact_envelope')
+        if contact_envelope:
+            b.add_component('envelope', component=contact_envelope)
             b.set_hierarchy(_hierarchy.binaryorbit,
                             b[orbit],
                             b[starA],
                             b[starB],
-                            b['contact_envelope'])
+                            b[contact_envelope])
         else:
             b.set_hierarchy(_hierarchy.binaryorbit,
                             b[orbit],
@@ -588,43 +591,68 @@ class Bundle(ParameterSet):
 
 
     @classmethod
-    def default_triple(cls, inner_as_primary=True, inner_as_overcontact=False,
+    def default_triple(cls, hierarchy='21',
                        starA='starA', starB='starB', starC='starC',
                        inner='inner', outer='outer',
-                       contact_envelope='contact_envelope'):
+                       contact_envelope=None, force_build=False):
         """
         For convenience, this function is available at the top-level as
         <phoebe.default_triple> as well as
         <phoebe.frontend.bundle.Bundle.default_triple>.
 
-        Load a bundle with a default triple system.
+        Load a bundle with a default stellar triple as the system.
 
-        Set inner_as_primary based on what hierarchical configuration you want.
+        The `hierarchy` argument depicts whether the inner-binary is the primary
+        or secondary component in the outer-orbit.
 
-        `inner_as_primary = True`:
+        `hierarchy = '21'` (default case): starA and starB make up the inner-binary
+            and are the primary component in the outer-orbit, with starC as
+            the tertiary companion.
 
-        starA - starB -- starC
+        star A - starB -- starC
 
-        `inner_as_primary = False`:
+        'hierarchy = '12'`: starA is the primary component, starB and starC make
+            up the inner-binary as the secondary compoonent in the outer-orbit.
 
-        starC -- starA - starB
+        starA -- starB - starC
+
 
         This is a constructor, so should be called as:
 
         ```py
-        b = Bundle.default_triple_primary()
+        b = Bundle.default_triple()
         ```
 
         Arguments
         -----------
-
+        * `hierarchy` (string, optional, default='21'): type of hierarchy layout
+            for the triple system.  Must be one of '21' or '12': see above for
+            more details.
+        * `starA` (string, optional, default='starA'): the label to be set for
+            the primary component.
+        * `starB` (string, optional, default='starB'): the label to be set for
+            the secondary component.
+        * `starC` (string, optional, default='starC'): the label to be set for
+            the tertiary component.
+        * `inner` (string, optional, default='inner'): the label to be set for
+            the inner-orbit component.
+        * `outer` (string, optional, default='outer'): the label to be set for
+            the outer-orbit component.
+        * `contact_envelope` (string or None or bool, optional, default=None):
+            whether to also add an envelope (with component=`contact_envelope`
+            if provided as a string, otherwise 'contact_envelope') to the inner
+            binary in the triple system.
+        * `force_build` (bool, optional, default=False): whether to force building
+            the bundle from scratch.  If False, pre-cached files will be loaded
+            whenever possible to save time.
 
         Returns
-        -------------
+        -----------
         * an instantiated <phoebe.frontend.bundle.Bundle> object.
         """
-        if not conf.devel:
-            raise NotImplementedError("'default_triple' not officially supported for this release.  Enable developer mode to test.")
+        if not force_build and not conf.devel:
+            raise NotImplementedError("cached triple bundles not yet implemented, set force_build=True")
+
 
         b = cls()
         b.add_star(component=starA)
@@ -633,20 +661,43 @@ class Bundle(ParameterSet):
         b.add_orbit(component=inner, period=1)
         b.add_orbit(component=outer, period=10)
 
-        if inner_as_overcontact:
-            b.add_envelope(component=contact_envelope)
-            inner_hier = _hierarchy.binaryorbit(b[inner],
-                                           b[starA],
-                                           b[starB],
-                                           b[contact_envelope])
-        else:
-            inner_hier = _hierarchy.binaryorbit(b[inner], b[starA], b[starB])
 
-        if inner_as_primary:
-            hierstring = _hierarchy.binaryorbit(b[outer], inner_hier, b[starC])
+        if hierarchy == '21':
+            if contact_envelope:
+                if not isinstance(contact_envelope, str):
+                    # ie. if passed as True
+                    contact_envelope='contact_envelope'
+                b.add_envelope(component=contact_envelope)
+                h1 = _hierarchy.binaryorbit(b[inner],
+                                            b[starA],
+                                            b[starB],
+                                            b[contact_envelope])
+            else:
+                h1 = _hierarchy.binaryorbit(b[inner],
+                                            b[starA],
+                                            b[starB])
+            hier = _hierarchy.binaryorbit(b[outer], h1, b[starC])
+
+        elif hierarchy == '12':
+            if contact_envelope:
+                if not isinstance(contact_envelope, str):
+                    # ie. if passed as True
+                    contact_envelope='contact_envelope'
+                b.add_envelope(component=contact_envelope)
+                h1 = _hierarchy.binaryorbit(b[inner],
+                                            b[starB],
+                                            b[starC],
+                                            b[contact_envelope])
+            else:
+                h1 = _hierarchy.binaryorbit(b[inner],
+                                            b[starB],
+                                            b[starC])
+            hier = _hierarchy.binaryorbit(b[outer], b[starA], h1)
+
         else:
-            hierstring = _hierarchy.binaryorbit(b[outer], b[starC], inner_hier)
-        b.set_hierarchy(hierstring)
+            raise ValueError("hierarchy of {} not supported".format(hierarchy))
+
+        b.set_hierarchy(hier)
 
         b.add_constraint(constraint.keplers_third_law_hierarchical,
                          outer, inner)
@@ -654,9 +705,261 @@ class Bundle(ParameterSet):
         # TODO: does this constraint need to be rebuilt when things change?
         # (ie in set_hierarchy)
 
-        b.add_compute()
-
+        b.add_compute(dynamics_method='nbody')
         return b
+
+    @classmethod
+    def default_doubledouble(cls, starA='starA', starB='starB',
+                             starC='starC', starD='starD',
+                             orbitAB='orbitAB', orbitCD='orbitCD', outer='outer',
+                             contact_envelopeAB=None, contact_envelopeCD=None,
+                             force_build=False):
+        """
+        For convenience, this function is available at the top-level as
+        <phoebe.default_doubledouble> as well as
+        <phoebe.frontend.bundle.Bundle.default_doubledouble>.
+
+        Load a bundle with a default double-double quadruple system.
+
+        starA - starB -- starC - starD
+
+        There are no hierarchy options for a double-double system.
+
+        This is a constructor, so should be called as:
+
+        ```py
+        b = Bundle.default_doubledouble()
+        ```
+
+        See also:
+        * <phoebe.default_quadruple>
+
+        Arguments
+        -----------
+        * `starA` (string, optional, default='starA'): the label to be set for
+            the primary component.
+        * `starB` (string, optional, default='starB'): the label to be set for
+            the secondary component.
+        * `starC` (string, optional, default='starC'): the label to be set for
+            the tertiary component.
+        * `starD` (string, optional, default='starD'): the label to be set for
+            the fourth component.
+        * `orbitAB` (string, optional, default='orbitAB'): the label to be set for
+            the inner-orbit between `starA` and `starB`.
+        * `orbitCD` (string, optional, default='orbitCD'): the label to be set for
+            the inner-orbit between `starC` and `starD`.
+        * `outer` (string, optional, default='outer'): the label to be set for
+            the outer-orbit component.
+        * `contact_envelopeAB` (string or None or bool, optional, default=None):
+            whether to also add an envelope (with component=`contact_envelopeAB`
+            if provided as a string, otherwise 'contact_envelopeAB') to `starA`
+            and `starB`.
+        * `contact_envelopeCD` (string or None or bool, optional, default=None):
+            whether to also add an envelope (with component=`contact_envelopeCD`
+            if provided as a string, otherwise 'contact_envelopeCD') to `starC`
+            and `starD`.
+        * `force_build` (bool, optional, default=False): whether to force building
+            the bundle from scratch.  If False, pre-cached files will be loaded
+            whenever possible to save time.
+
+        Returns
+        -----------
+        * an instantiated <phoebe.frontend.bundle.Bundle> object.
+        """
+        if not force_build and not conf.devel:
+            raise NotImplementedError("cached doubledouble bundles not yet implemented, set force_build=True")
+
+
+        b = cls()
+        b.add_star(component=starA)
+        b.add_star(component=starB)
+        b.add_star(component=starC)
+        b.add_star(component=starD)
+        b.add_orbit(component=orbitAB, period=1)
+        b.add_orbit(component=orbitCD, period=1)
+        b.add_orbit(component=outer, period=10)
+
+        if contact_envelopeAB:
+            if not isinstance(contact_envelopeAB, str):
+                # ie. if its True
+                contact_envelopeAB = 'contact_envelopeAB'
+            b.add_envelope(component=contact_envelopeAB)
+            h1 = _hierarchy.binaryorbit(b[orbitAB], b[starA], b[starB], b[contact_envelopeAB])
+        else:
+            h1 = _hierarchy.binaryorbit(b[orbitAB], b[starA], b[starB])
+
+        if contact_envelopeCD is not None:
+            if not isinstance(contact_envelopeCD, str):
+                # ie. if its True
+                contact_envelopeCD = 'contact_envelopeCD'
+            b.add_envelope(component=contact_envelopeCD)
+            h2 = _hierarchy.binaryorbit(b[orbitCD], b[starC], b[starD], b[contact_envelopeCD])
+        else:
+            h2 = _hierarchy.binaryorbit(b[orbitCD], b[starC], b[starD])
+
+        hier = _hierarchy.binaryorbit(b[outer], h1, h2)
+
+        b.set_hierarchy(hier)
+
+        # TODO: set hierarchical constraints
+        raise NotImplementedError('double-double hierarchical constraints not yet implemented')
+
+        b.add_compute(dynamics_method='nbody')
+        return b
+
+    @classmethod
+    def default_quadruple(cls, hierarchy='211',
+                          starA='starA', starB='starB',
+                          starC='starC', starD='starD',
+                          inner='inner', middle='middle', outer='outer',
+                          contact_envelope=None,
+                          force_build=False):
+        """
+        For convenience, this function is available at the top-level as
+        <phoebe.default_quadruple> as well as
+        <phoebe.frontend.bundle.Bundle.default_quadruple>.
+
+        Load a bundle with a default hierarchical quadruple system.
+
+        The `hierarchy` argument depicts the layout of the system and has the
+        following options:
+
+        `hierarchy = '211'` (default case):
+
+        star A - starB -- starC --- starD
+
+        'hierarchy = '112'`:
+
+        starA --- starB -- starC - starD
+
+        hierarchy == '121' or '121a':
+
+        starA -- starB - starC --- starD
+
+        hierarchy == '121b':
+
+        starA --- starB - starC -- starD
+
+        For a configuration of starA - starB -- starC - starD, use
+        <phoebe.default_doubledouble> instead.
+
+
+        This is a constructor, so should be called as:
+
+        ```py
+        b = Bundle.default_qaudruple()
+        ```
+
+        See also:
+        * <phoebe.default_doubledouble>
+
+        Arguments
+        -----------
+        * `hierarchy` (string, optional, default='211'): type of hierarchy layout
+            for the quadruple system.  Must be one of '211', '112', '121',
+            '121a', '121b': see above for  more details.
+        * `starA` (string, optional, default='starA'): the label to be set for
+            the primary component.
+        * `starB` (string, optional, default='starB'): the label to be set for
+            the secondary component.
+        * `starC` (string, optional, default='starC'): the label to be set for
+            the tertiary component.
+        * `starD` (string, optional, default='starD'): the label to be set for
+            the fourth component.
+        * `inner` (string, optional, default='inner'): the label to be set for
+            the inner-orbit component.
+        * `middle` (string, optional, default='middle'): the label to be set for
+            the middle-orbit component.
+        * `outer` (string, optional, default='outer'): the label to be set for
+            the outer-orbit component.
+        * `contact_envelope` (string or None or bool, optional, default=None):
+            whether to also add an envelope (with component=`contact_envelope`
+            if provided as a string, otherwise 'contact_envelope') to the inner
+            binary.
+        * `force_build` (bool, optional, default=False): whether to force building
+            the bundle from scratch.  If False, pre-cached files will be loaded
+            whenever possible to save time.
+
+        Returns
+        -----------
+        * an instantiated <phoebe.frontend.bundle.Bundle> object.
+        """
+        if not force_build and not conf.devel:
+            raise NotImplementedError("cached quadruple bundles not yet implemented, set force_build=True")
+
+
+        b = cls()
+        b.add_star(component=starA)
+        b.add_star(component=starB)
+        b.add_star(component=starC)
+        b.add_star(component=starD)
+        b.add_orbit(component=inner, period=1)
+        b.add_orbit(component=middle, period=1)
+        b.add_orbit(component=outer, period=10)
+
+        if contact_envelope:
+            if not isinstance(contact_envelope, str):
+                # ie. if its True
+                contact_envelope = 'contact_envelope'
+            b.add_envelope(component=contact_envelope)
+
+        if hierarchy == '211':
+            if contact_envelope is not None:
+                h1 = _hierarchy.binaryorbit(b[inner],
+                                               b[starA],
+                                               b[starB],
+                                               b[contact_envelope])
+            else:
+               h1 = _hierarchy.binaryorbit(b[inner], b[starA], b[starB])
+            h2 = _hierarchy.binaryorbit(b[middle], h1, b[starC])
+            hier = _hierarchy.binaryorbit(b[outer], h2, b[starD])
+        elif hierarchy == '112':
+            if contact_envelope is not None:
+                h1 = _hierarchy.binaryorbit(b[inner],
+                                            b[starC],
+                                            b[starD],
+                                            b[contact_envelope])
+            else:
+                h1 = _hierarchy.binaryorbit(b[inner], b[starC], b[starD])
+            h2 = _hierarchy.binaryorbit(b[middle], b[starB], h1)
+            hier = _hierarchy.binaryorbit(b[outer], b[starA], h2)
+        elif hierarchy in ['121', '121a']:
+            if contact_envelope is not None:
+                h1 = _hierarchy.binaryorbit(b[inner],
+                                            b[starB],
+                                            b[starC],
+                                            b[contact_envelope])
+            else:
+                h1 = _hierarchy.binaryorbit(b[inner], b[starB], b[starC])
+            h2 = _hierarchy.binaryorbit(b[middle], b[starA], h1)
+            hier = _hierarchy.binaryorbit(b[outer], h2, b[starD])
+        elif hierarchy == '121b':
+            if contact_envelope is not None:
+                h1 = _hierarchy.binaryorbit(b[inner],
+                                            b[starB],
+                                            b[starC],
+                                            b[contact_envelope])
+            else:
+                h1 = _hierarchy.binaryorbit(b[inner], b[starB], b[starC])
+            h2 = _hierarchy.binaryorbit(b[middle], h1, b[starD])
+            hier = _hierarchy.binaryorbit(b[outer], b[starA], h2)
+        elif hierarchy == '22':
+            raise ValueError("for hierarchy==22 use default_doubledouble instead")
+        else:
+            raise ValueError("hierarchy of {} not supported".format(hierarchy))
+
+        b.set_hierarchy(hier)
+
+        # TODO: set hierarchical constraints
+        b.add_constraint(constraint.keplers_third_law_hierarchical,
+                         middle, inner)
+
+        b.add_constraint(constraint.keplers_third_law_hierarchical,
+                         outer, middle)
+
+        b.add_compute(dynamics_method='nbody')
+        return b
+
 
     def save(self, filename, clear_history=True, incl_uniqueid=False,
              compact=False):
