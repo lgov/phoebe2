@@ -538,6 +538,10 @@ class Bundle(ParameterSet):
         -----------
         * an instantiated <phoebe.frontend.bundle.Bundle> object.
         """
+        if contact_envelope and not isinstance(contact_envelope, str):
+            # ie. if passed as True
+            contact_envelope='contact_envelope'
+
         if not force_build and not conf.devel:
             if contact_envelope:
                 b = cls.open(os.path.join(_bundle_cache_dir, 'default_contact_binary.bundle'))
@@ -573,12 +577,13 @@ class Bundle(ParameterSet):
         b.add_star(component=starB, **star_defaults)
         b.add_orbit(component=orbit, **orbit_defaults)
         if contact_envelope:
-            b.add_component('envelope', component=contact_envelope)
+            print("***", contact_envelope)
+            envelope = b.add_component('envelope', component=contact_envelope)
             b.set_hierarchy(_hierarchy.binaryorbit,
                             b[orbit],
                             b[starA],
                             b[starB],
-                            b[contact_envelope])
+                            envelope)
         else:
             b.set_hierarchy(_hierarchy.binaryorbit,
                             b[orbit],

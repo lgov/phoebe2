@@ -17,8 +17,8 @@ def test_binary():
     # TODO: add comparison
 
 def test_contact_binary():
-    b1 = phoebe.default_binary(contact_binary=True, force_build=True)
-    b2 = phoebe.default_binary(contact_binary=True)
+    b1 = phoebe.default_binary(contact_envelope=True, force_build=True)
+    b2 = phoebe.default_binary(contact_envelope=True)
 
     # TODO: add comparison
 
