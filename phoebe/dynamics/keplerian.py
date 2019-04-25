@@ -326,8 +326,6 @@ def dynamics(times, periods, eccs, smas, t0_perpasses, per0s, long_ans, incls,
         # We now have the orbital parameters for a single star/component.
 
         if ltte:
-            def propertime_barytime_residual(t):
-                pos, vel, euler = binary_dynamics_nested(time, period, ecc, sma, \
             def propertime_barytime_residual(t, time):
                 pos, vel, euler = binary_dynamics_nested(t, period, ecc, sma, \
                                 t0_perpass, per0, long_an, incl, dpdt, deccdt, \

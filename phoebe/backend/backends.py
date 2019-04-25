@@ -595,7 +595,7 @@ class PhoebeBackend(BaseBackendByTime):
 
             elif dynamics_method=='keplerian':
                 # TODO: make sure that this takes systemic velocity and corrects positions and velocities (including ltte effects if enabled)
-                t0, corrected_t0 xs0, ys0, zs0, vxs0, vys0, vzs0, ethetas0, elongans0, eincls0 = dynamics.keplerian.dynamics_from_bundle(b, [t0], compute, return_euler=True, **kwargs)
+                t0, corrected_t0, xs0, ys0, zs0, vxs0, vys0, vzs0, ethetas0, elongans0, eincls0 = dynamics.keplerian.dynamics_from_bundle(b, [t0], compute, return_euler=True, **kwargs)
 
             else:
                 raise NotImplementedError

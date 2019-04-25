@@ -6,6 +6,10 @@ from scipy.optimize import newton
 
 
 from phoebe import u, c
+from phoebe.dynamics import keplerian
+from phoebe import conf
+
+from distutils.version import LooseVersion
 
 try:
     import photodynam
@@ -19,19 +23,24 @@ try:
 except ImportError:
     _can_rebound = False
 else:
-    _can_rebound = True
+    _can_rebound = LooseVersion(rebound.__version__) >= LooseVersion('3.4.0')
 
-try:
-    import reboundx
-except ImportError:
-    _can_reboundx = False
+if _can_rebound:
+    try:
+        import reboundx
+    except ImportError:
+        _can_reboundx = False
+    else:
+        _can_reboundx = True
 else:
-    _can_reboundx = True
+    _can_reboundx = False
 
 import logging
 logger = logging.getLogger("DYNAMICS.NBODY")
 logger.addHandler(logging.NullHandler())
 
+
+au_to_solrad = (1*u.AU).to(u.solRad).value
 
 def _ensure_tuple(item):
     """
@@ -84,6 +93,8 @@ def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, use_k
 
     """
 
+    # TODO: need to make a non-bundle version of this
+
     b.run_delayed_constraints()
 
     hier = b.hierarchy
@@ -97,47 +108,23 @@ def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, use_k
     starrefs = hier.get_stars()
     orbitrefs = hier.get_orbits() if use_kepcart else [hier.get_parent_of(star) for star in starrefs]
 
+    # vgamma = b.get_value('vgamma', context='system', unit=u.AU/u.d) # should be extracted by keplerian.dynamics_from_bundle
+    t0 = b.get_value('t0', context='system', unit=u.d)
+
+    if not _can_rebound and not conf.devel:
+        # NOTE: the conf.devel only needs to be in place until rebound releases v 3.3.2
+        raise ImportError("rebound 3.3.2+ is not installed")
+
+    if gr and not _can_reboundx:
+        raise ImportError("reboundx is not installed (required for gr effects)")
+
+    dump, dump, xs, ys, zs, vxs, vys, vzs = keplerian.dynamics_from_bundle(b, [t0], compute=compute)
+
     def mean_anom(t0, t0_perpass, period):
         # TODO: somehow make this into a constraint where t0 and mean anom
         # are both in the compute options if dynamic_method==nbody
         # (one is constrained from the other and the orbit.... nvm, this gets ugly)
         return 2 * np.pi * (t0 - t0_perpass) / period
-
-    masses = [b.get_value('mass', u.solMass, component=component, context='component') * c.G.to('AU3 / (Msun d2)').value for component in starrefs]  # GM
-    smas = [b.get_value('sma', u.AU, component=component, context='component') for component in orbitrefs]
-    eccs = [b.get_value('ecc', component=component, context='component') for component in orbitrefs]
-    incls = [b.get_value('incl', u.rad, component=component, context='component') for component in orbitrefs]
-    per0s = [b.get_value('per0', u.rad, component=component, context='component') for component in orbitrefs]
-    long_ans = [b.get_value('long_an', u.rad, component=component, context='component') for component in orbitrefs]
-    t0_perpasses = [b.get_value('t0_perpass', u.d, component=component, context='component') for component in orbitrefs]
-    periods = [b.get_value('period', u.d, component=component, context='component') for component in orbitrefs]
-
-    if return_roche_euler:
-        # rotperiods are only needed to compute instantaneous syncpars
-        rotperiods = [b.get_value('period', u.d, component=component, context='component') for component in starrefs]
-    else:
-        rotperiods = None
-
-    vgamma = b.get_value('vgamma', context='system', unit=u.AU/u.d)
-    t0 = b.get_value('t0', context='system', unit=u.d)
-
-    # mean_anoms = [mean_anom(t0, t0_perpass, period) for t0_perpass, period in zip(t0_perpasses, periods)]
-    mean_anoms = [b.get_value('mean_anom', u.rad, component=component, context='component') for component in orbitrefs]
-
-    return dynamics(times, masses, smas, eccs, incls, per0s, long_ans, \
-                    mean_anoms, rotperiods, t0, vgamma, stepsize, ltte, gr,
-                    integrator, use_kepcart=use_kepcart, return_roche_euler=return_roche_euler)
-
-
-def dynamics(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms,
-        rotperiods=None, t0=0.0, vgamma=0.0, stepsize=0.01, ltte=False, gr=False,
-        integrator='ias15', return_roche_euler=False, use_kepcart=False):
-
-    if not _can_rebound:
-        raise ImportError("rebound is not installed")
-
-    if gr and not _can_reboundx:
-        raise ImportError("reboundx is not installed (required for gr effects)")
 
     def particle_ltte(sim, particle_N, t_obs):
         c_AU_d = c.c.to(u.AU/u.d).value
@@ -159,8 +146,65 @@ def dynamics(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms,
 
         return sim.particles[particle_N]
 
+    def com_phantom_particle(particles):
+        m = sum([p.m for p in particles])
+        x = 1./m * sum([p.m*p.x for p in particles])
+        y = 1./m * sum([p.m*p.y for p in particles])
+        z = 1./m * sum([p.m*p.z for p in particles])
+        vx = 1./m * sum([p.m*p.vx for p in particles])
+        vy = 1./m * sum([p.m*p.vy for p in particles])
+        vz = 1./m * sum([p.m*p.vz for p in particles])
 
-    times = np.asarray(times)
+        return rebound.Particle(m=m, x=x, y=y, z=z, vx=vx, vy=vy, vz=vz)
+
+    def calculate_euler(sim, j):
+        # NOTE: THIS WILL FAIL FOR j==0 FOR REBOUND < 3.3.2
+        particle = sim.particles[j]
+
+        sibling_particles = [sim.particles[k] for k in sibling_Ns[j]]
+        # NOTE: this isn't the com of THIS system, but rather the COM
+        # of the sibling (if it consists of more than 1 star)
+        com_particle = com_phantom_particle(sibling_particles)
+        # com_particle = com_phantom_particle([particle]+sibling_particles)
+
+        # get the orbit based on this com_particle as the primary component
+        orbit = particle.calculate_orbit(primary=com_particle)
+
+        # print "*** m1 m2: {} {}".format(particle.m, com_particle.m)
+        # print "*** (x1, y1, z1) (x2, y2, z2): ({}, {}, {}) ({}, {}, {})".format(particle.x, particle.y, particle.z, com_particle.x, com_particle.y, com_particle.z)
+        # print "*** (vx1, vy1, vz1) (vx2, vy2, vz2): ({}, {}, {}) ({}, {}, {})".format(particle.vx, particle.vy, particle.vz, com_particle.vx, com_particle.vy, com_particle.vz)
+        # print "**** P, a, d, d/a, F, inc", orbit.P, orbit.a, orbit.d, orbit.d/orbit.a, orbit.P/rotperiods[j], orbit.inc
+
+        # for instantaneous separation, we need the current separation
+        # from the sibling component in units of its instantaneous (?) sma
+        d = orbit.d / orbit.a
+        # for syncpar (F), assume that the rotational FREQUENCY will
+        # remain fixed - so we simply need to updated syncpar based
+        # on the INSTANTANEOUS orbital PERIOD.
+        F = orbit.P / rotperiods[j]
+
+        # TODO: need to add np.pi for secondary component?
+        etheta = orbit.f + orbit.omega + np.pi # true anomaly + periastron
+
+        elongan = orbit.Omega - np.pi # TODO: need to check if this is correct, this set to orbit.Omega seemed to be causing the offset issue
+
+        eincl = orbit.inc
+
+        # print "*** calculate_euler ind: {}, etheta: {} [{}] ({}, {}), sibling_inds: {}, self: ({}, {}, {}), sibling: ({}, {}, {})".format(j, etheta, etheta+np.pi if etheta<np.pi else etheta-np.pi, orbit.f, orbit.omega, sibling_Ns[j], particle.x, particle.y, particle.z, com_particle.x, com_particle.y, com_particle.z)
+
+        period = orbit.P
+        sma = orbit.a
+        ecc = orbit.e
+        per0 = orbit.omega
+        long_an = orbit.Omega - np.pi
+        incl = orbit.inc
+        t0_perpass = orbit.T
+
+        # TODO: all after eincl are only required if requesting to store in the
+        # mesh... but shouldn't be taking too much time to calculate and store
+        return d, F, etheta, elongan, eincl, period, sma, ecc, per0, long_an, incl, t0_perpass
+
+    times = np.asarray(times) - t0
 
     sim = rebound.Simulation()
 
@@ -172,87 +216,74 @@ def dynamics(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms,
         params = rebx.add_gr_full()
 
     sim.integrator = integrator
-    # NOTE: according to rebound docs: "stepsize will change for adaptive integrators such as IAS15"
+    # NOTE: according to rebound docs: "stepsize will change for adaptive
+    # integrators such as IAS15"
     sim.dt = stepsize
 
-    if use_kepcart:
-        # print "*** bs.kep2cartesian", masses, smas, eccs, incls, per0s, long_ans, mean_anoms, t0
-        init_conds = bs.kep2cartesian(_ensure_tuple(masses), _ensure_tuple(smas),
-                                      _ensure_tuple(eccs), _ensure_tuple(incls),
-                                      _ensure_tuple(per0s), _ensure_tuple(long_ans),
-                                      _ensure_tuple(mean_anoms), t0)
-        for i in range(len(masses)):
-            mass = masses[i]
-            x = init_conds['x'][i]
-            y = init_conds['y'][i]
-            z = init_conds['z'][i]
-            vx = init_conds['vx'][i]
-            vy = init_conds['vy'][i]
-            vz = init_conds['vz'][i]
-            # print "*** adding simulation particle for mass:", mass, x, y, z, vx, vy, vz
-            sim.add(m=mass,
-                    x=x, y=y, z=z,
-                    vx=vx, vy=vy, vz=vz
-                    )
+    sibling_Ns = []
+    for i,starref in enumerate(starrefs):
+        # print "***", i, starref
 
-            # just in case that was stupid and did things in Jacobian, let's for the positions and velocities
-            p = sim.particles[-1]
-            p.x = x
-            p.y = y
-            p.z = z
-            p.vx = vx
-            p.vy = vy
-            p.vz = vz
-    else:
-        for mass, sma, ecc, incl, per0, long_an, mean_anom in zip(masses, smas, eccs, incls, per0s, long_ans, mean_anoms):
-            N = sim.N
-            # TODO: this assumes building from the inside out (Jacobi coordinates).
-            # Make sure that will always happen.
-            # This assumption will currently probably fail if inner_as_primary==False.
-            # But for now even the inner_as_primary=True case is broken, probably
-            # because of the way we define some elements WRT nesting orbits (sma)
-            # and others WRT sky (incl, long_an, per0)
+        # TODO: do this in rsol instead of AU so we don't have to convert the particles back and forth below?
+        mass = b.get_value('mass', u.solMass, component=starref, context='component') * c.G.to('AU3 / (Msun d2)').value
 
-            if N==0:
-                # print "*** adding simulation particle for mass:", mass
-                sim.add(m=mass)
-            else:
-                # print "*** adding simulation particle for mass:", mass, sma, ecc, incl, long_an, per0, mean_anom
-                sim.add(primary=None,
-                        m=mass,
-                        a=sma,
-                        e=ecc,
-                        inc=incl,
-                        Omega=long_an,
-                        omega=per0,
-                        M=mean_anom)
+        if return_roche_euler:
+            # rotperiods are only needed to compute instantaneous syncpars
+            rotperiods = [b.get_value('period', u.d, component=component, context='component') for component in starrefs]
+        else:
+            rotperiod = None
 
-            sim.move_to_com()
 
-    # Now handle vgamma by editing the initial vz on each particle
-    for particle in sim.particles:
-        # vgamma is in the direction of positive RV or negative vz
-        particle.vz -= vgamma
+        # xs, ys, zs are in solRad; vxs, vys, vzs are in solRad/d
+        # pass to rebound in AU and AU/d
+        # print "***", starref, mass, xs[i][0]/au_to_solrad, ys[i][0]/au_to_solrad, zs[i][0]/au_to_solrad, vxs[i][0]/au_to_solrad, vys[i][0]/au_to_solrad, vzs[i][0]/au_to_solrad
+        sim.add(m=mass, x=xs[i][0]/au_to_solrad, y=ys[i][0]/au_to_solrad, z=zs[i][0]/au_to_solrad, vx=vxs[i][0]/au_to_solrad, vy=vys[i][0]/au_to_solrad, vz=vzs[i][0]/au_to_solrad)
 
-    xs = [np.zeros(times.shape) for m in masses]
-    ys = [np.zeros(times.shape) for m in masses]
-    zs = [np.zeros(times.shape) for m in masses]
-    vxs = [np.zeros(times.shape) for m in masses]
-    vys = [np.zeros(times.shape) for m in masses]
-    vzs = [np.zeros(times.shape) for m in masses]
+        # also track the index of all particles that need to be included as
+        # the sibling of this particle (via their COM)
+        # TODO: only do this if return_roche_euler?
+        sibling_starrefs = hier.get_stars_of_sibling_of(starref)
+        sibling_Ns.append([starrefs.index(s) for s in sibling_starrefs])
+
+
+    #### TESTING ###
+    # print "*** TESTING EULER BEFORE INTEGRATION"
+    # for j,starref in enumerate(starrefs):
+    #     print "*** {} original: (x, y, z) (vx, vy, vz): ({}, {}, {}) ({}, {}, {})".format(starref, xs[j][0]/au_to_solrad, ys[j][0]/au_to_solrad, zs[j][0]/au_to_solrad, vxs[j][0]/au_to_solrad, vys[j][0]/au_to_solrad, vzs[j][0]/au_to_solrad)
+    #     calculate_euler(sim, j)
+    # exit()
+
+    ################
+
+
+
+    xs = [np.zeros(times.shape) for j in range(sim.N)]
+    ys = [np.zeros(times.shape) for j in range(sim.N)]
+    zs = [np.zeros(times.shape) for j in range(sim.N)]
+    vxs = [np.zeros(times.shape) for j in range(sim.N)]
+    vys = [np.zeros(times.shape) for j in range(sim.N)]
+    vzs = [np.zeros(times.shape) for j in range(sim.N)]
 
     if return_roche_euler:
         # from instantaneous Keplerian dynamics for Roche meshing
-        ds = [np.zeros(times.shape) for m in masses]
-        Fs = [np.zeros(times.shape) for m in masses]
+        ds = [np.zeros(times.shape) for j in range(sim.N)]
+        Fs = [np.zeros(times.shape) for j in range(sim.N)]
 
-        ethetas = [np.zeros(times.shape) for m in masses]
-        elongans = [np.zeros(times.shape) for m in masses]
-        eincls = [np.zeros(times.shape) for m in masses]
+        ethetas = [np.zeros(times.shape) for j in range(sim.N)]
+        elongans = [np.zeros(times.shape) for j in range(sim.N)]
+        eincls = [np.zeros(times.shape) for j in range(sim.N)]
 
-    au_to_solrad = (1*u.AU).to(u.solRad).value
+        periods = [np.zeros(times.shape) for j in range(sim.N)]
+        smas = [np.zeros(times.shape) for j in range(sim.N)]
+        eccs = [np.zeros(times.shape) for j in range(sim.N)]
+        per0s = [np.zeros(times.shape) for j in range(sim.N)]
+        long_ans = [np.zeros(times.shape) for j in range(sim.N)]
+        incls = [np.zeros(times.shape) for j in range(sim.N)]
+        t0_perpasses = [np.zeros(times.shape) for j in range(sim.N)]
 
     for i,time in enumerate(times):
+
+        # print "*** integrating to t=", time
 
         sim.integrate(time, exact_finish_time=True)
 
@@ -260,8 +291,30 @@ def dynamics(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms,
             # TODO: do we need to do this after handling LTTE???
             # orbits = sim.calculate_orbits()
 
-        for j in range(len(masses)):
+        for j in range(sim.N):
 
+            # get roche/euler information BEFORE making LTTE adjustments
+            if return_roche_euler:
+
+
+                d, F, etheta, elongan, eincl, period, sma, ecc, per0, long_an, incl, t0_perpass = calculate_euler(sim, j)
+
+                ds[j][i] = d
+                Fs[j][i] = F
+                ethetas[j][i] = etheta
+                elongans[j][i] = elongan
+                eincls[j][i] = eincl
+
+                periods[j][i] = period
+                smas[j][i] = sma
+                eccs[j][i] = ecc
+                per0s[j][i] = per0
+                long_ans[j][i] = long_an
+                incls[j][i] = incl
+                t0_perpasses[j][i] = t0_perpass
+
+            # if necessary, make adjustments to particle for LTTE and then
+            # store position/velocity of the particle
             if ltte:
                 # then we need to integrate to different times per object
                 particle = particle_ltte(sim, j, time)
@@ -269,49 +322,17 @@ def dynamics(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms,
                 # print "***", time, j, sim.N
                 particle = sim.particles[j]
 
-            # NOTE: x and y are flipped because of different coordinate system
-            # conventions.  If we change our coordinate system to have x point
-            # to the left, this will need to be updated to match as well.
-            xs[j][i] = -1 * particle.x * au_to_solrad # solRad
-            ys[j][i] = -1 * particle.y * au_to_solrad # solRad
+            xs[j][i] = particle.x * au_to_solrad # solRad
+            ys[j][i] = particle.y * au_to_solrad # solRad
             zs[j][i] = particle.z * au_to_solrad  # solRad
-            vxs[j][i] = -1 * particle.vx * au_to_solrad # solRad/d
-            vys[j][i] = -1 * particle.vy * au_to_solrad # solRad/d
+            vxs[j][i] = particle.vx * au_to_solrad # solRad/d
+            vys[j][i] = particle.vy * au_to_solrad # solRad/d
             vzs[j][i] = particle.vz * au_to_solrad # solRad/d
-
-            if return_roche_euler:
-                # TODO: do we want the LTTE-adjust particles?
-
-                # NOTE: this won't work for the first particle (as its the
-                # primary in the simulation)
-                if j==0:
-                    particle = sim.particles[j+1]
-                else:
-                    particle = sim.particles[j]
-
-                # get the orbit based on the primary component defined already
-                # in the simulation.
-                orbit = particle.calculate_orbit()
-
-                # for instantaneous separation, we need the current separation
-                # from the sibling component in units of its instantaneous (?) sma
-                ds[j][i] = orbit.d / orbit.a
-                # for syncpar (F), assume that the rotational FREQUENCY will
-                # remain fixed - so we simply need to updated syncpar based
-                # on the INSTANTANEOUS orbital PERIOD.
-                Fs[j][i] = orbit.P / rotperiods[j]
-
-                # TODO: need to add np.pi for secondary component
-                ethetas[j][i] = orbit.f + orbit.omega # true anomaly + periastron
-
-                elongans[j][i] = orbit.Omega
-
-                eincls[j][i] = orbit.inc
 
 
     if return_roche_euler:
         # d, solRad, solRad/d, rad, unitless (sma), unitless, rad, rad, rad
-        return times, xs, ys, zs, vxs, vys, vzs, ds, Fs, ethetas, elongans, eincls
+        return times, xs, ys, zs, vxs, vys, vzs, ds, Fs, ethetas, elongans, eincls, periods, smas, eccs, per0s, long_ans, incls, t0_perpasses
 
     else:
         # d, solRad, solRad/d, rad
