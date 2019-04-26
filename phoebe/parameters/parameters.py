@@ -7508,7 +7508,7 @@ class HierarchyParameter(StringParameter):
         sibling = self.get_sibling_of(component)
 
         if sibling in self.get_stars():
-            return sibling
+            return [sibling]
 
         stars = [child for child in self.get_stars_of_children_of(sibling)]
 
