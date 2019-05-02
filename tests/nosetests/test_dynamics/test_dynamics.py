@@ -19,18 +19,18 @@ def _keplerian_v_nbody(b, plot=False):
 
     times = np.linspace(0, 100, 10000)
     nb_ts, nb_us, nb_vs, nb_ws, nb_vus, nb_vvs, nb_vws = phoebe.dynamics.nbody.dynamics_from_bundle(b, times, ltte=False)
-    k_ts, k_us, k_vs, k_ws, k_vus, k_vvs, k_vws = phoebe.dynamics.keplerian.dynamics_from_bundle(b, times)
+    k_ts, k_correctedts, k_us, k_vs, k_ws, k_vus, k_vvs, k_vws = phoebe.dynamics.keplerian.dynamics_from_bundle(b, times, ltte=False)
 
     assert(np.allclose(nb_ts, k_ts, 1e-8))
     for ci in range(len(b.hierarchy.get_stars())):
         # TODO: make atol lower (currently 1e-5 solRad which is awfully big, but 1e-6 currently fails!)
         if plot:
-            print("max atol xs:", nb_us[ci] - k_us[ci])
-            print("max atol ys:", nb_vs[ci] - k_vs[ci])
-            print("max atol zs:", nb_ws[ci] - k_ws[ci])
-            print("max atol vxs:", nb_vus[ci] - k_vus[ci])
-            print("max atol vys:", nb_vvs[ci] - k_vvs[ci])
-            print("max atol vzs:", nb_vws[ci] - k_vws[ci])
+            print("max atol xs:", np.max(abs(nb_us[ci] - k_us[ci])))
+            print("max atol ys:", np.max(abs(nb_vs[ci] - k_vs[ci])))
+            print("max atol zs:", np.max(abs(nb_ws[ci] - k_ws[ci])))
+            print("max atol vxs:", np.max(abs(nb_vus[ci] - k_vus[ci])))
+            print("max atol vys:", np.max(abs(nb_vvs[ci] - k_vvs[ci])))
+            print("max atol vzs:", np.max(abs(nb_vws[ci] - k_vws[ci])))
 
         assert(np.allclose(nb_us[ci], k_us[ci], atol=1e-5))
         assert(np.allclose(nb_vs[ci], k_vs[ci], atol=1e-5))
@@ -92,59 +92,53 @@ def _frontend_v_backend(b, plot=False):
 
     times = np.linspace(0, 100, 21)
     b.add_dataset('orb', times=times, dataset='orb01', component=b.hierarchy.get_stars())
-    b.add_compute('phoebe', dynamics_method='keplerian', compute='keplerian')
-    b.add_compute('phoebe', dynamics_method='bs', compute='nbody')
+    b.add_compute('phoebe', dynamics_method='keplerian', ltte=False, compute='keplerian')
+    b.add_compute('phoebe', dynamics_method='nbody', ltte=False, compute='nbody')
 
 
     # NBODY
     # do backend Nbody
-    b_ts, b_us, b_vs, b_ws, b_vus, b_vvs, b_vws = phoebe.dynamics.nbody.dynamics_from_bundle(b, times, compute='nbody')
+    b_ts, b_us, b_vs, b_ws, b_vus, b_vvs, b_vws = phoebe.dynamics.nbody.dynamics_from_bundle(b, times, ltte=False, compute='nbody')
 
     # do frontend Nbody
     b.run_compute('nbody', model='nbodyresults')
 
 
+
     for ci,comp in enumerate(b.hierarchy.get_stars()):
-        # TODO: can we lower tolerance?
-        assert(np.allclose(b.get_value('times', dataset='orb01', model='nbodyresults', component=comp, unit=u.d), b_ts, atol=1e-6))
-        assert(np.allclose(b.get_value('us', dataset='orb01', model='nbodyresults', component=comp, unit=u.solRad), b_us[ci], atol=1e-5))
-        assert(np.allclose(b.get_value('vs', dataset='orb01', model='nbodyresults', component=comp, unit=u.solRad), b_vs[ci], atol=1e-5))
-        assert(np.allclose(b.get_value('ws', dataset='orb01', model='nbodyresults', component=comp, unit=u.solRad), b_ws[ci], atol=1e-5))
-        assert(np.allclose(b.get_value('vus', dataset='orb01', model='nbodyresults', component=comp, unit=u.solRad/u.d), b_vus[ci], atol=1e-4))
-        assert(np.allclose(b.get_value('vvs', dataset='orb01', model='nbodyresults', component=comp, unit=u.solRad/u.d), b_vvs[ci], atol=1e-4))
-        assert(np.allclose(b.get_value('vws', dataset='orb01', model='nbodyresults', component=comp, unit=u.solRad/u.d), b_vws[ci], atol=1e-4))
+        # TODO: can we lower tolerances?
+        for qualifier, backend_array, unit, atol in zip(['times', 'us', 'vs', 'ws', 'vus', 'vvs', 'vws'], [b_ts, b_us[ci], b_vs[ci], b_ws[ci], b_vus[ci], b_vvs[ci], b_vws[ci]], [u.d, u.solRad, u.solRad, u.solRad, u.solRad/u.d, u.solRad/u.d, u.solRad/u.d], [1e-20, 1e-20, 1e-20, 1e-20, 1e-20, 1e-20, 1e-20]):
+            frontend_array = b.get_value(qualifier, dataset='orb01', model='nbodyresults', component=comp, unit=unit)
+            if plot:
+                print("*** max abs diff ({}): {}, max abs value ({}): {}".format(qualifier, np.max(abs(frontend_array-backend_array)), qualifier, max(abs(backend_array))))
+                # print(frontend_array)
 
-
+            assert(np.allclose(frontend_array, backend_array, atol=atol))
 
 
     # KEPLERIAN
     # do backend keplerian
-    b_ts, b_xs, b_ys, b_zs, b_vxs, b_vys, b_vzs = phoebe.dynamics.keplerian.dynamics_from_bundle(b, times, compute='keplerian')
-
+    b_ts, b_correctedts, b_us, b_vs, b_ws, b_vus, b_vvs, b_vws = phoebe.dynamics.keplerian.dynamics_from_bundle(b, times, ltte=False, compute='keplerian')
 
     # do frontend keplerian
     b.run_compute('keplerian', model='keplerianresults')
 
-
-    # TODO: loop over components and assert
     for ci,comp in enumerate(b.hierarchy.get_stars()):
-        # TODO: can we lower tolerance?
-        assert(np.allclose(b.get_value('times', dataset='orb01', model='keplerianresults', component=comp, unit=u.d), b_ts, atol=1e-6))
-        assert(np.allclose(b.get_value('us', dataset='orb01', model='keplerianresults', component=comp, unit=u.solRad), b_us[ci], atol=1e-5))
-        assert(np.allclose(b.get_value('vs', dataset='orb01', model='keplerianresults', component=comp, unit=u.solRad), b_vs[ci], atol=1e-5))
-        assert(np.allclose(b.get_value('ws', dataset='orb01', model='keplerianresults', component=comp, unit=u.solRad), b_ws[ci], atol=1e-5))
-        assert(np.allclose(b.get_value('vus', dataset='orb01', model='keplerianresults', component=comp, unit=u.solRad/u.d), b_vus[ci], atol=1e-4))
-        assert(np.allclose(b.get_value('vvs', dataset='orb01', model='keplerianresults', component=comp, unit=u.solRad/u.d), b_vvs[ci], atol=1e-4))
-        assert(np.allclose(b.get_value('vws', dataset='orb01', model='keplerianresults', component=comp, unit=u.solRad/u.d), b_vws[ci], atol=1e-4))
+        # TODO: can we lower tolerances?
+        for qualifier, backend_array, unit, atol in zip(['times', 'us', 'vs', 'ws', 'vus', 'vvs', 'vws'], [b_ts, b_us[ci], b_vs[ci], b_ws[ci], b_vus[ci], b_vvs[ci], b_vws[ci]], [u.d, u.solRad, u.solRad, u.solRad, u.solRad/u.d, u.solRad/u.d, u.solRad/u.d], [1e-20, 1e-20, 1e-20, 1e-20, 1e-20, 1e-20, 1e-20]):
+            frontend_array = b.get_value(qualifier, dataset='orb01', model='keplerianresults', component=comp, unit=unit)
+            if plot:
+                print("*** max abs diff ({}): {}, max abs value ({}): {}".format(qualifier, np.max(abs(frontend_array-backend_array)), qualifier, max(abs(backend_array))))
+                # print(frontend_array)
 
+            assert(np.allclose(frontend_array, backend_array, atol=atol))
 
 
 def test_binary(plot=False):
     """
     """
-    phoebe.devel_on() # required for nbody dynamics
+    phoebe.devel_on() # required for dynamics_method 'bs' or 'rebound'
 
-    # TODO: grid over orbital parameters
     # TODO: once ps.copy is implemented, just send b.copy() to each of these
 
     b = phoebe.default_binary()
@@ -160,7 +154,7 @@ def test_binary(plot=False):
 
 
 if __name__ == '__main__':
-    logger = phoebe.logger(clevel='INFO')
+    logger = phoebe.logger(clevel='debug')
 
 
     test_binary(plot=True)
