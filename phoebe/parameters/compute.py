@@ -73,10 +73,10 @@ def phoebe(**kwargs):
     params += [ChoiceParameter(qualifier='dynamics_method', value=kwargs.get('dynamics_method', 'keplerian'), choices=['keplerian', 'bs', 'rebound', 'nbody'] if conf.devel else ['keplerian', 'nbody'], description='Which method to use to determine the dynamics of components')]
     params += [BoolParameter(qualifier='ltte', value=kwargs.get('ltte', False), description='Correct for light travel time effects')]
 
-    if conf.devel:
-        params += [BoolParameter(visible_if='dynamics_method:nbody', qualifier='gr', value=kwargs.get('gr', False), description='Whether to account for general relativity effects')]
-        params += [FloatParameter(visible_if='dynamics_method:nbody', qualifier='stepsize', value=kwargs.get('stepsize', 0.01), default_unit=None, description='stepsize for the N-body integrator')]         # TODO: improve description (and units??)
-        params += [ChoiceParameter(visible_if='dynamics_method:nbody', qualifier='integrator', value=kwargs.get('integrator', 'ias15'), choices=['ias15', 'whfast', 'sei', 'leapfrog', 'hermes'], description='Which integrator to use within rebound')]
+    params += [BoolParameter(visible_if='dynamics_method:nbody', qualifier='gr', value=kwargs.get('gr', False), description='Whether to account for general relativity effects')]
+    params += [ChoiceParameter(visible_if='dynamics_method:nbody', qualifier='integrator', value=kwargs.get('integrator', 'ias15'), choices=['ias15', 'whfast', 'sei', 'leapfrog', 'mercurius'], description='Which integrator to use within rebound')]
+    # TODO: hide stepsize if ingtegrator == ias15
+    params += [FloatParameter(visible_if='dynamics_method:nbody', qualifier='stepsize', value=kwargs.get('stepsize', 0.01), default_unit=None, description='stepsize for the N-body integrator')]         # TODO: improve description (and units?? - is this in days?)
 
     # params += [FloatParameter(visible_if='dynamics_method:bs', qualifier='stepsize', value=kwargs.get('stepsize', 0.01), default_unit=None, description='stepsize for the N-body integrator')]         # TODO: improve description (and units??)
     # params += [FloatParameter(visible_if='dynamics_method:bs', qualifier='orbiterror', value=kwargs.get('orbiterror', 1e-20), default_unit=None, description='orbiterror for the N-body integrator')]  # TODO: improve description (and units??)

@@ -589,16 +589,14 @@ class PhoebeBackend(BaseBackendByTime):
 
         if len(meshablerefs) > 1 or hier.get_kind_of(meshablerefs[0])=='envelope':
             logger.debug("rank:{}/{} PhoebeBackend._create_system_and_compute_pblums: computing dynamics at t0".format(mpi.myrank, mpi.nprocs))
-            if dynamics_method in ['nbody', 'rebound']:
+            if dynamics_method == 'nbody':
                 t0, xs0, ys0, zs0, vxs0, vys0, vzs0, inst_ds0, inst_Fs0, ethetas0, elongans0, eincls0, inst_periods0, inst_smas0, inst_eccs0, inst_per0s0, inst_long_ans0, inst_incls0, inst_t0_perpasses0 = dynamics.nbody.dynamics_from_bundle(b, [t0], compute, return_roche_euler=True, **kwargs)
                 #ts, xs, ys, zs, vxs, vys, vzs, inst_ds, inst_Fs, ethetas, elongans, eincls, inst_periods, inst_smas, inst_eccs, inst_per0s, inst_long_ans, inst_incls, inst_t0_perpasses = dynamics.nbody.dynamics_from_bundle(b, times, compute, return_roche_euler=True, **kwargs)
 
+            elif dynamics_method == 'rebound':
+                t0, xs0, ys0, zs0, vxs0, vys0, vzs0, inst_ds0, inst_Fs0, ethetas0, elongans0, eincls0, inst_periods0, inst_smas0, inst_eccs0, inst_per0s0, inst_long_ans0, inst_incls0, inst_t0_perpasses0 = dynamics.nbody.dynamics_from_bundle_rebound(b, [t0], compute, return_roche_euler=True, **kwargs)
 
             elif dynamics_method == 'bs':
-                raise NotImplementedError("dynamics_method='bs' not supported")
-
-                # TODO: pass stepsize
-                # TODO: pass orbiterror
                 # TODO: make sure that this takes systemic velocity and corrects positions and velocities (including ltte effects if enabled)
                 t0, xs0, ys0, zs0, vxs0, vys0, vzs0, inst_ds0, inst_Fs0, ethetas0, elongans0, eincls0, inst_periods0, inst_smas0, inst_eccs0, inst_per0s0, inst_long_ans0, inst_incls0, inst_t0_perpasses0 = dynamics.nbody.dynamics_from_bundle_bs(b, [t0], compute, return_roche_euler=True, **kwargs)
 
@@ -673,20 +671,15 @@ class PhoebeBackend(BaseBackendByTime):
 
         if len(meshablerefs) > 1 or hier.get_kind_of(meshablerefs[0])=='envelope':
             logger.debug("rank:{}/{} PhoebeBackend._worker_setup: computing dynamics at all times".format(mpi.myrank, mpi.nprocs))
-            if dynamics_method in ['nbody', 'rebound']:
+            if dynamics_method == 'nbody':
                 ts, xs, ys, zs, vxs, vys, vzs, inst_ds, inst_Fs, ethetas, elongans, eincls, inst_periods, inst_smas, inst_eccs, inst_per0s, inst_long_ans, inst_incls, inst_t0_perpasses = dynamics.nbody.dynamics_from_bundle(b, times, compute, return_roche_euler=True, **kwargs)
 
+            elif dynamics_method == 'rebound':
+                ts, xs, ys, zs, vxs, vys, vzs, inst_ds, inst_Fs, ethetas, elongans, eincls, inst_periods, inst_smas, inst_eccs, inst_per0s, inst_long_ans, inst_incls, inst_t0_perpasses = dynamics.nbody.dynamics_from_bundle_rebound(b, times, compute, return_roche_euler=True, **kwargs)
+
             elif dynamics_method == 'bs':
-                raise NotImplementedError("dynamics_method='bs' not supported")
-
-                # if distortion_method == 'roche':
-                    # raise ValueError("distortion_method '{}' not compatible with dynamics_method '{}'".format(distortion_method, dynamics_method))
-
-                # TODO: pass stepsize
-                # TODO: pass orbiterror
                 # TODO: make sure that this takes systemic velocity and corrects positions and velocities (including ltte effects if enabled)
                 ts, xs, ys, zs, vxs, vys, vzs, inst_ds, inst_Fs, ethetas, elongans, eincls, inst_periods, inst_smas, inst_eccs, inst_per0s, inst_long_ans, inst_incls, inst_t0_perpasses = dynamics.nbody.dynamics_from_bundle_bs(b, times, compute, return_roche_euler=True, **kwargs)
-
 
             elif dynamics_method=='keplerian':
                 # TODO: make sure that this takes systemic velocity and corrects positions and velocities (including ltte effects if enabled)

@@ -66,7 +66,10 @@ def _ensure_tuple(item):
     else:
         raise NotImplementedError
 
-def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, use_kepcart=False, **kwargs):
+def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, **kwargs):
+    return dynamics_from_bundle_bs(b, times, compute=compute, return_roche_euler=return_roche_euler, **kwargs)
+
+def dynamics_from_bundle_rebound(b, times, compute=None, return_roche_euler=False, **kwargs):
     """
     Parse parameters in the bundle and call :func:`dynamics`.
 
@@ -105,8 +108,10 @@ def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, use_k
     gr = computeps.get_value('gr', check_visible=False, **kwargs)
     integrator = computeps.get_value('integrator', check_visible=False, **kwargs)
 
+    logger.debug("nbody.dynamics_from_bundle stepsize={} ltte={} gr={} integrator={}".format(stepsize, ltte, gr, integrator))
+
     starrefs = hier.get_stars()
-    orbitrefs = hier.get_orbits() if use_kepcart else [hier.get_parent_of(star) for star in starrefs]
+    orbitrefs = hier.get_orbits()
 
     # vgamma = b.get_value('vgamma', context='system', unit=u.AU/u.d) # should be extracted by keplerian.dynamics_from_bundle
     t0 = b.get_value('t0', context='system', unit=u.d)
@@ -118,13 +123,7 @@ def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, use_k
         raise ImportError("reboundx is not installed (required for gr effects)")
 
     dump, dump, xs, ys, zs, vxs, vys, vzs = keplerian.dynamics_from_bundle(b, [t0], compute=compute)
-    logger.debug("dynamics_from_bundle, intial values at t0: xs={}, ys={}, zs={}, vxs={}, vys={}, vzs={}".format([x[0] for x in xs], [y[0] for y in ys], [z[0] for z in zs], [vx[0] for vx in vxs], [vy[0] for vy in vys], [vz[0] for vz in vzs]))
-
-    def mean_anom(t0, t0_perpass, period):
-        # TODO: somehow make this into a constraint where t0 and mean anom
-        # are both in the compute options if dynamic_method==nbody
-        # (one is constrained from the other and the orbit.... nvm, this gets ugly)
-        return 2 * np.pi * (t0 - t0_perpass) / period
+    logger.debug("nbody.dynamics_from_bundle, intial values at t0: xs={}, ys={}, zs={}, vxs={}, vys={}, vzs={}".format([x[0] for x in xs], [y[0] for y in ys], [z[0] for z in zs], [vx[0] for vx in vxs], [vy[0] for vy in vys], [vz[0] for vz in vzs]))
 
     def particle_ltte(sim, particle_N, t_obs):
         c_AU_d = c.c.to(u.AU/u.d).value
@@ -209,7 +208,7 @@ def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, use_k
     sim = rebound.Simulation()
 
     if gr:
-        logger.info("enabling 'gr_full' in reboundx")
+        logger.info("nbody.dynamics_from_bundle: enabling 'gr_full' in reboundx")
         rebx = reboundx.Extras(sim)
         # TODO: switch between different GR setups based on masses/hierarchy
         # http://reboundx.readthedocs.io/en/latest/effects.html#general-relativity
@@ -225,7 +224,8 @@ def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, use_k
         # print "***", i, starref
 
         # TODO: do this in rsol instead of AU so we don't have to convert the particles back and forth below?
-        mass = b.get_value('mass', u.solMass, component=starref, context='component') * c.G.to('AU3 / (Msun d2)').value
+        # mass = b.get_value('mass', u.solMass, component=starref, context='component') * c.G.to('AU3 / (Msun d2)').value
+        mass = b.get_value('mass', u.solMass, component=starref, context='component') * c.G.to('solRad3 / (Msun d2)').value
 
         if return_roche_euler:
             # rotperiods are only needed to compute instantaneous syncpars
@@ -236,8 +236,9 @@ def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, use_k
 
         # xs, ys, zs are in solRad; vxs, vys, vzs are in solRad/d
         # pass to rebound in AU and AU/d
-        # print "***", starref, mass, xs[i][0]/au_to_solrad, ys[i][0]/au_to_solrad, zs[i][0]/au_to_solrad, vxs[i][0]/au_to_solrad, vys[i][0]/au_to_solrad, vzs[i][0]/au_to_solrad
-        sim.add(m=mass, x=xs[i][0]/au_to_solrad, y=ys[i][0]/au_to_solrad, z=zs[i][0]/au_to_solrad, vx=vxs[i][0]/au_to_solrad, vy=vys[i][0]/au_to_solrad, vz=vzs[i][0]/au_to_solrad)
+        logger.debug("nbody.dynamics_from_bundle: starref={} sim.add(m={}, x={}, y={}, z={}, vx={}, vy={}, vz={})".format(starref, mass, xs[i][0]/au_to_solrad, ys[i][0]/au_to_solrad, zs[i][0]/au_to_solrad, vxs[i][0]/au_to_solrad, vys[i][0]/au_to_solrad, vzs[i][0]/au_to_solrad))
+        # sim.add(m=mass, x=xs[i][0]/au_to_solrad, y=ys[i][0]/au_to_solrad, z=zs[i][0]/au_to_solrad, vx=vxs[i][0]/au_to_solrad, vy=vys[i][0]/au_to_solrad, vz=vzs[i][0]/au_to_solrad)
+        sim.add(m=mass, x=xs[i][0], y=ys[i][0], z=zs[i][0], vx=vxs[i][0], vy=vys[i][0], vz=vzs[i][0])
 
         # also track the index of all particles that need to be included as
         # the sibling of this particle (via their COM)
@@ -322,12 +323,18 @@ def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, use_k
                 # print "***", time, j, sim.N
                 particle = sim.particles[j]
 
-            xs[j][i] = particle.x * au_to_solrad # solRad
-            ys[j][i] = particle.y * au_to_solrad # solRad
-            zs[j][i] = particle.z * au_to_solrad  # solRad
-            vxs[j][i] = particle.vx * au_to_solrad # solRad/d
-            vys[j][i] = particle.vy * au_to_solrad # solRad/d
-            vzs[j][i] = particle.vz * au_to_solrad # solRad/d
+            # xs[j][i] = particle.x * au_to_solrad # solRad
+            # ys[j][i] = particle.y * au_to_solrad # solRad
+            # zs[j][i] = particle.z * au_to_solrad  # solRad
+            # vxs[j][i] = particle.vx * au_to_solrad # solRad/d
+            # vys[j][i] = particle.vy * au_to_solrad # solRad/d
+            # vzs[j][i] = particle.vz * au_to_solrad # solRad/d
+            xs[j][i] = particle.x # solRad
+            ys[j][i] = particle.y # solRad
+            zs[j][i] = particle.z # solRad
+            vxs[j][i] = particle.vx # solRad/d
+            vys[j][i] = particle.vy # solRad/d
+            vzs[j][i] = particle.vz # solRad/d
 
 
     if return_roche_euler:
@@ -376,12 +383,6 @@ def dynamics_from_bundle_bs(b, times, compute=None, return_roche_euler=False, **
     starrefs = hier.get_stars()
     orbitrefs = hier.get_orbits()
 
-    def mean_anom(t0, t0_perpass, period):
-        # TODO: somehow make this into a constraint where t0 and mean anom
-        # are both in the compute options if dynamic_method==nbody
-        # (one is constrained from the other and the orbit.... nvm, this gets ugly)
-        return 2 * np.pi * (t0 - t0_perpass) / period
-
     masses = [b.get_value('mass', u.solMass, component=component, context='component') * c.G.to('AU3 / (Msun d2)').value for component in starrefs]  # GM
     smas = [b.get_value('sma', u.AU, component=component, context='component') for component in orbitrefs]
     eccs = [b.get_value('ecc', component=component, context='component') for component in orbitrefs]
@@ -394,7 +395,6 @@ def dynamics_from_bundle_bs(b, times, compute=None, return_roche_euler=False, **
     vgamma = b.get_value('vgamma', context='system', unit=u.solRad/u.d)
     t0 = b.get_value('t0', context='system', unit=u.d)
 
-    # mean_anoms = [mean_anom(t0, t0_perpass, period) for t0_perpass, period in zip(t0_perpasses, periods)]
     mean_anoms = [b.get_value('mean_anom', u.rad, component=component, context='component') for component in orbitrefs]
 
     return dynamics_bs(times, masses, smas, eccs, incls, per0s, long_ans, \
@@ -503,12 +503,17 @@ def dynamics_bs(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms,
         # eincls = [(np.array([d['kepl_in'][ti][oi]+incls[0 if oi==0 else oi-1] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
         eincls = [(np.array([d['kepl_in'][ti][oi]+np.pi-incls[0 if oi==0 else oi-1] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
 
+        periods = [[None for ti in range(ntimes)] for oi in range(nobjects)]
+        sma = [[None for ti in range(ntimes)] for oi in range(nobjects)]
+        eccs = [[None for ti in range(ntimes)] for oi in range(nobjects)]
+        per0s = [[None for ti in range(ntimes)] for oi in range(nobjects)]
+        long_ans = [[None for ti in range(ntimes)] for oi in range(nobjects)]
+        incls = [[None for ti in range(ntimes)] for oi in range(nobjects)]
+        t0_perpasses = [[None for ti in range(ntimes)] for oi in range(nobjects)]
 
-
-        # d, solRad, solRad/d, rad
-        return ts, xs, ys, zs, vxs, vys, vzs, ds, Fs, ethetas, elongans, eincls
+        # d, solRad [3], solRad/d [3], rad [3], ...
+        return ts, xs, ys, zs, vxs, vys, vzs, ds, Fs, ethetas, elongans, eincls, periods, smas, eccs, per0s, long_ans, incls, t0_perpasses
 
     else:
-
-        # d, solRad, solRad/d
+        # d, solRad [3], solRad/d [3]
         return ts, xs, ys, zs, vxs, vys, vzs

@@ -18,7 +18,7 @@ def _keplerian_v_nbody(b, ltte, period, plot=False):
 
     times = np.linspace(0, 5*period, 101)
     nb_ts, nb_us, nb_vs, nb_ws, nb_vus, nb_vvs, nb_vws = phoebe.dynamics.nbody.dynamics_from_bundle(b, times, ltte=ltte)
-    k_ts, k_us, k_vs, k_ws, k_vus, k_vvs, k_vws = phoebe.dynamics.keplerian.dynamics_from_bundle(b, times, ltte=ltte)
+    k_ts, k_correctedts, k_us, k_vs, k_ws, k_vus, k_vvs, k_vws = phoebe.dynamics.keplerian.dynamics_from_bundle(b, times, ltte=ltte)
 
     assert(np.allclose(nb_ts, k_ts, 1e-8))
     for ci in range(len(b.hierarchy.get_stars())):
@@ -27,6 +27,7 @@ def _keplerian_v_nbody(b, ltte, period, plot=False):
         assert(np.allclose(nb_vs[ci], k_vs[ci], rtol=1e-5, atol=1e-2))
         assert(np.allclose(nb_ws[ci], k_ws[ci], rtol=1e-5, atol=1e-2))
 
+        # TODO: fix bs ltte velocities
         # nbody ltte velocities are wrong so only check velocities if ltte off
         if not ltte:
             assert(np.allclose(nb_vus[ci], k_vus[ci], rtol=1e-5, atol=1e-2))
@@ -103,6 +104,7 @@ def _frontend_v_backend(b, ltte, period, plot=False):
         assert(np.allclose(b.get_value('us', model='nbodyresults', component=comp, unit=u.solRad), b_us[ci], rtol=1e-7, atol=1e-4))
         assert(np.allclose(b.get_value('vs', model='nbodyresults', component=comp, unit=u.solRad), b_vs[ci], rtol=1e-7, atol=1e-4))
         assert(np.allclose(b.get_value('ws', model='nbodyresults', component=comp, unit=u.solRad), b_ws[ci], rtol=1e-7, atol=1e-4))
+
         if not ltte:
             assert(np.allclose(b.get_value('vus', model='nbodyresults', component=comp, unit=u.solRad/u.d), b_vus[ci], rtol=1e-7, atol=1e-4))
             assert(np.allclose(b.get_value('vvs', model='nbodyresults', component=comp, unit=u.solRad/u.d), b_vvs[ci], rtol=1e-7, atol=1e-4))
@@ -110,7 +112,7 @@ def _frontend_v_backend(b, ltte, period, plot=False):
 
     # KEPLERIAN
     # do backend keplerian
-    b_ts, b_us, b_vs, b_ws, b_vus, b_vvs, b_vws = phoebe.dynamics.keplerian.dynamics_from_bundle(b, times, compute='keplerian', ltte=ltte)
+    b_ts, b_correctedts, b_us, b_vs, b_ws, b_vus, b_vvs, b_vws = phoebe.dynamics.keplerian.dynamics_from_bundle(b, times, compute='keplerian', ltte=ltte)
 
     # do frontend keplerian
     b.run_compute('keplerian', model='keplerianresults')
