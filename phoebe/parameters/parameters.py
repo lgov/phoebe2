@@ -7494,6 +7494,8 @@ class HierarchyParameter(StringParameter):
         #item_kind, item_label = item.split(':')
 
         parent_label = self.get_parent_of(component)
+        if parent_label is None:
+            return []
         siblings = self.get_children_of(parent_label, kind=kind)
 
         #self_ind = siblings.index(component)
@@ -7563,9 +7565,12 @@ class HierarchyParameter(StringParameter):
 
         Returns
         ---------
-        * (string)
+        * (list of strings)
         """
         sibling = self.get_sibling_of(component)
+
+        if sibling is None:
+            return []
 
         if sibling in self.get_stars():
             return [sibling]
