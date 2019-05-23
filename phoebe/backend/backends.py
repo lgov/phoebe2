@@ -657,8 +657,10 @@ class PhoebeBackend(BaseBackendByTime):
 
         do_horizon = False #computeparams.get_value('horizon', **kwargs)
         dynamics_method = computeparams.get_value('dynamics_method', **kwargs)
+        dump_ = kwargs.pop('dynamics_method', None)
         ltte = computeparams.get_value('ltte', **kwargs)
         distance = b.get_value(qualifier='distance', context='system', unit=u.m, **kwargs)
+        dump_ = kwargs.pop('distance', None)
 
         # TODO: skip initializing system if we NEVER need meshes
         system = self._create_system_and_compute_pblums(b, compute,
@@ -884,7 +886,7 @@ class PhoebeBackend(BaseBackendByTime):
             elif kind=='etv':
 
                 # TODO: add support for other etv kinds (barycentric, robust, others?)
-                time_ecl = etvs.crossing(b, info['component'], time, dynamics_method, ltte, tol=computeparams.get_value('etv_tol', u.d, dataset=info['dataset'], component=info['component']))
+                time_ecl = etvs.crossing(b, info['component'], time, dynamics_method, kwargs.get('ltte', False), tol=computeparams.get_value('etv_tol', u.d, dataset=info['dataset'], component=info['component']))
 
                 this_obs = b.filter(dataset=info['dataset'], component=info['component'], context='dataset')
 
