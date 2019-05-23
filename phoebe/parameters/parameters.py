@@ -5897,7 +5897,7 @@ class IntParameter(Parameter):
 
             # make sure the value is within the limits
             if not self.within_limits(value):
-                raise ValueError("value of {} must be within limits of {}".format(self.qualifier, self.limits))
+                raise ValueError("value of {}={} not within limits of {}".format(self.qualifier, value, self.limits))
 
         return value
 
@@ -6420,8 +6420,11 @@ class FloatParameter(Parameter):
                 logger.warning("wrapping value of {} to {}".format(self.qualifier, value))
 
         # make sure the value is within the limits, if this isn't an array or nan
-        if isinstance(value, float) and not self.within_limits(value):
-            raise ValueError("value of {} must be within limits of {}".format(self.qualifier, self.limits))
+        if ((isinstance(value, float) and not np.isnan(value))
+            or (isinstance(value, u.Quantity) and ((isinstance(value.value, float) and not np.isnan(value.value))
+                                                   or isinstance(value.value, np.ndarray) and not np.any(np.isnan(value.value))))) and not self.within_limits(value):
+            raise ValueError("value of {}={} not within limits of {}".format(self.qualifier, value, self.limits))
+
 
         # make sure we can convert back to the default_unit
         try:
@@ -6749,7 +6752,7 @@ class FloatArrayParameter(FloatParameter):
         if len(kwargs.keys()) > 1:
             raise KeyError("interp_value only takes a single qualifier-value pair")
 
-        qualifier, qualifier_interp_value = kwargs.items()[0]
+        qualifier, qualifier_interp_value = list(kwargs.items())[0]
 
         if isinstance(qualifier_interp_value, str):
             # then assume its a twig and try to resolve
