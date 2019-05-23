@@ -66,6 +66,108 @@ def _ensure_tuple(item):
     else:
         raise NotImplementedError
 
+def keplerian_from_cartesian(positions, velocities, mass_tot, t0=0.0, G=c.G.to('solRad3 / (solMass d2)').value):
+    """
+    positions nparray relative to sibling star in solRad (or pass appropriate G)
+    velocities nparray relative to sibling star in solRad/d (or pass appropriate G)
+    mass_tot float in solMass (or pass appropriate G)
+
+    using equations from Fundamentals of Astrodynamics and Applications, by Vallado, 2007.
+    see: https://space.stackexchange.com/a/1919
+    with inspiration from: https://github.com/RazerM/orbital/blob/0.7.0/orbital/utilities.py#L252
+    """
+    r_v = np.asarray(positions)
+    r = np.linalg.norm(r_v)
+
+    v_v = np.asarray(velocities)
+    v = np.linalg.norm(v_v)
+
+    mu = mass_tot * G
+
+    h_v = np.cross(r_v, v_v)
+    h = np.linalg.norm(h_v)
+
+    n_v = np.cross([0, 0, 1], h_v)
+    n = np.linalg.norm(n_v)
+
+    e_v = ((v ** 2 - mu / r) * r_v - np.dot(r_v, v_v) * v_v) / mu
+    e = np.linalg.norm(e_v)
+
+    if e >= 1:
+        raise NotImplementedError("ecc cannot be >= 1")
+
+    E = v**2 / 2 - mu / r
+    a = - mu / (2 * E)
+
+    incl = np.arccos(h_v[2] / h)
+
+    if abs(incl) < 1e-12:
+        long_an = 0
+
+        if e == 0.:
+            # for circular orbits, per0 is 0 by convention.  This will probably
+            # never be exactly zero... but then its up to the user to realize
+            # that per0 is meaningless
+            per0 = 0
+        else:
+            per0 = np.arccos(e_v[0] / e)
+
+    else:
+        long_an = np.arccos(n_v[0] / n)
+        if n_v[1] < 0:
+            long_an = 2*np.pi - long_an
+
+        # TODO: figure out why long_an needs to be adjusted by pi... possibly
+        # due to coordinate system conventions
+        long_an += np.pi
+
+        if e == 0.:
+            per0 = 0
+        else:
+            per0 = np.arccos(np.dot(n_v, e_v) / (n * e))
+
+    # when running keplerian intial pos/vel with e=0, we get e=1e-8 back and
+    # we want to make sure we still trigger the special case in those scenarios
+    if e < 1e-6:
+        if abs(incl) < 1e-12:
+            print "*** A"
+            true_anom = np.arccos(r_v[0] / r)
+            # if v_v[0] > 0:
+            #     print "*** AA"
+            #     true_anom = 2*np.pi - true_anom
+
+        else:
+            print "*** B"
+            true_anom = np.arccos(np.dot(n_v, r_v) / (n*r))
+            if np.dot(n_v, v_v) > 0:
+                print "*** BB"
+                true_anom = 2*np.pi - true_anom
+    else:
+        if e_v[2] < 0 and e > 0.:
+            per0 = 2*np.pi - per0
+
+        print "*** C"
+        true_anom = np.arccos(np.dot(e_v, r_v) / (e * r))
+
+        if np.dot(r_v, v_v) < 0:
+            print "*** CC"
+            true_anom = 2*np.pi - true_anom
+
+    # compute period from kepler's third law, the determined value of a,
+    # and the fixed/provided values for mass_tot and G
+    period = ((4 * np.pi**2 * a**3)/(mass_tot * G))**0.5
+
+    # convert from true anom to period and t0_perpass
+    mean_anom = true_anom - e * np.sin(true_anom)
+    t0_perpass = t0 - (mean_anom * period) / (2*np.pi)
+
+
+    # sma (solRad if G not provided), ecc, period (d if G not provided), incl (rad), per0 (rad), long_an (rad), mean_anom (rad), t0_perpass (rad)
+    return a, e, period, incl, per0, long_an, true_anom, mean_anom, t0_perpass
+
+
+
+
 def dynamics_from_bundle(b, times, compute=None, return_roche_euler=False, **kwargs):
     return dynamics_from_bundle_bs(b, times, compute=compute, return_roche_euler=return_roche_euler, **kwargs)
 
