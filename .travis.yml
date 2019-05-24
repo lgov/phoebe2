@@ -112,8 +112,6 @@ install:
   - cd photodynam
   - make
   - sudo cp photodynam /usr/local/bin/
-  - python setup.py build
-  - python setup.py install --user
   - cd ..
 
 

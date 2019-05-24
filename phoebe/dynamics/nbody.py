@@ -11,12 +11,7 @@ from phoebe import conf
 
 from distutils.version import LooseVersion
 
-try:
-    import photodynam
-except ImportError:
-    _can_bs = False
-else:
-    _can_bs = True
+from phoebe.dependencies import photodynam
 
 try:
     import rebound
@@ -557,9 +552,6 @@ def dynamics_bs(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms,
         positions and velocities of each star at those same times.
 
     """
-
-    if not _can_bs:
-        raise ImportError("photodynam is not installed (http://github.com/phoebe-project/photodynam)")
 
     times = np.asarray(times)
     masses = np.asarray(masses)

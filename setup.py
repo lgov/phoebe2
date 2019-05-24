@@ -296,6 +296,12 @@ ext_modules = [
       sources = ['phoebe/algorithms/ceclipse.cpp'],
       include_dirs=[numpy.get_include()]
       ),
+    Extension('phoebe.dependencies.photodynam',
+      language='c++',
+      sources = ['phoebe/dependencies/photodynam/pywrapper/libphotodynam.cpp'],
+      extra_compile_args = ["-std=c++11", "-Iphoebe/dependencies/photodynam/include"],
+      include_dirs=[numpy.get_include()]
+    )
 ]
 
 #
