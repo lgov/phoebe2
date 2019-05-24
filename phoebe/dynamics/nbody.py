@@ -125,27 +125,21 @@ def keplerian_from_cartesian(positions, velocities, mass_tot, t0=0.0, G=c.G.to('
     # we want to make sure we still trigger the special case in those scenarios
     if e < 1e-6:
         if abs(incl) < 1e-12:
-            print "*** A"
             true_anom = np.arccos(r_v[0] / r)
-            # if v_v[0] > 0:
-            #     print "*** AA"
-            #     true_anom = 2*np.pi - true_anom
+            if v_v[0] > 0:
+                true_anom = 2*np.pi - true_anom
 
         else:
-            print "*** B"
             true_anom = np.arccos(np.dot(n_v, r_v) / (n*r))
             if np.dot(n_v, v_v) > 0:
-                print "*** BB"
                 true_anom = 2*np.pi - true_anom
     else:
         if e_v[2] < 0 and e > 0.:
             per0 = 2*np.pi - per0
 
-        print "*** C"
         true_anom = np.arccos(np.dot(e_v, r_v) / (e * r))
 
         if np.dot(r_v, v_v) < 0:
-            print "*** CC"
             true_anom = 2*np.pi - true_anom
 
     # compute period from kepler's third law, the determined value of a,
