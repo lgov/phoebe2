@@ -515,13 +515,14 @@ def dynamics_bs(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms,
     currently uses the NBody code in Josh Carter's photodynam code
     available here:
 
-    [[TODO: include link]]
+    [github.com/phoebe-project/photodynam](http://github.com/phoebe-project/photodynam)
 
     If using the Nbody mode in PHOEBE, please cite him as well:
 
-    [[TODO: include citation]]
+    * Science 4 February 2011: Vol. 331 no. 6017 pp. 562-565 DOI:10.1126/science.1201274
+    * MNRAS (2012) 420 (2): 1630-1635. doi: 10.1111/j.1365-2966.2011.20151.x
 
-    See :func:`dynamics_from_bundle` for a wrapper around this function
+    See <phoebe.dynamics.nbody.dynamics_from_bundle_bs> for a wrapper around this function
     which automatically handles passing everything in the correct order
     and in the correct units.
 
@@ -534,8 +535,8 @@ def dynamics_bs(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms,
     Args:
         times: (iterable) times at which to compute positions and
             velocities for each star
-        masses: (iterable) mass for each star in [solMass]
-        smas: (iterable) semi-major axis for each orbit [AU]
+        masses: (iterable) mass for each star in [GM - solRad3/d2]
+        smas: (iterable) semi-major axis for each orbit [solRad]
         eccs: (iterable) eccentricities for each orbit
         incls: (iterable) inclinations for each orbit [rad]
         per0s: (iterable) longitudes of periastron for each orbit [rad]
@@ -560,61 +561,73 @@ def dynamics_bs(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms,
     if not _can_bs:
         raise ImportError("photodynam is not installed (http://github.com/phoebe-project/photodynam)")
 
-    times = _ensure_tuple(times)
-    masses = _ensure_tuple(masses)
-    smas = _ensure_tuple(smas)
-    eccs = _ensure_tuple(eccs)
-    incls = _ensure_tuple(incls)
-    per0s = _ensure_tuple(per0s)
-    long_ans = _ensure_tuple(long_ans)
-    mean_anoms = _ensure_tuple(mean_anoms)
+    times = np.asarray(times)
+    masses = np.asarray(masses)
+    smas = np.asarray(smas)
+    eccs = np.asarray(eccs)
+    incls = np.asarray(incls)
+    per0s = np.asarray(per0s)
+    long_ans = np.asarray(long_ans)
+    mean_anoms = np.asarray(mean_anoms)
 
-    # TODO: include vgamma!!!!
-    # print "*** bs.do_dynamics", masses, smas, eccs, incls, per0s, long_ans, mean_anoms, t0
+    # TODO: include vgamma (see https://github.com/phoebe-project/photodynam/issues/2)
+    logger.debug("calling photodynam.do_dynamics(times={}, masses={}, smas={}, eccs={}, incls={}, per0s={}, long_ans={}, mean_anoms={}, t0={}, stepsize={}, orbiterror={}, ltte={}, return_roche_euler={})".format(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms, t0, stepsize, orbiterror, ltte, return_roche_euler))
     d = photodynam.do_dynamics(times, masses, smas, eccs, incls, per0s, long_ans, mean_anoms, t0, stepsize, orbiterror, ltte, return_roche_euler)
-    # d is in the format: {'t': (...), 'x': ( (1,2,3), (1,2,3), ...), 'y': ..., 'z': ...}
+    # d is in the format: {'t': (t0, t1, ...), 'x': ( (t0_comp1,t0_comp2,t0_comp3), (t1_comp1,t1_comp2,t1_comp3), ...), 'y': ..., 'z': ...}
+    # d.keys(): ['kepl_a', 'kepl_e', 'kepl_o', 'kepl_in', 'kepl_ma', 'vx', 'kepl_ln', 't', 'vy', 'y', 'x', 'vz', 'z']
 
     nobjects = len(masses)
+    norbits = len(smas)
     ntimes = len(times)
 
-    # TODO: need to return euler angles... if that even makes sense?? Or maybe we
-    # need to make a new place in orbit??
 
-    au_to_solrad = (1*u.AU).to(u.solRad).value
-
-    ts = np.array(d['t'])
-    xs = [(-1*np.array([d['x'][ti][oi] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-    ys = [(-1*np.array([d['y'][ti][oi] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-    zs = [(np.array([d['z'][ti][oi] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-    vxs = [(-1*np.array([d['vx'][ti][oi] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-    vys = [(-1*np.array([d['vy'][ti][oi] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-    vzs = [(np.array([d['vz'][ti][oi] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
+    ts = d['t']
+    # we need to transpose the output from photodynam so that the first index
+    # is the component and the second is the time.
+    xs = -1*d['x'].T * au_to_solrad
+    ys = -1*d['y'].T * au_to_solrad
+    zs = d['z'].T * au_to_solrad
+    vxs = -1*d['vx'].T * au_to_solrad
+    vys = -1*d['vy'].T * au_to_solrad
+    vzs = d['vz'].T * au_to_solrad
 
     if return_roche_euler:
-        # raise NotImplementedError("euler angles for BS not currently supported")
-        # a (sma), e (ecc), in (incl), o (per0?), ln (long_an?), m (mean_anom?)
-        ds = [(np.array([d['kepl_a'][ti][oi] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-        # TODO: fix this
-        Fs = [(np.array([1.0 for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-        # TODO: check to make sure this is the right angle
+        def _compute_period(sma, mass_tot, G=1):
+            return ((4 * np.pi**2 * (sma/au_to_solrad)**3)/(mass_tot * G))**0.5
+        def _compute_t0_perpass(mean_anom, period, t0=0.0):
+            return t0 - (mean_anom * period) / (2*np.pi)
+
+        # TODO: can this be cleaned up to use the transpose and just add an entry at the beginning/end
+        # TODO: will this work for all hierarchy orders/arrangements?
+        # kepl_a (sma), kepl_e (ecc), kepl_in (incl), kepl_o (per0), kepl_ln (long_an), kepl_ma (mean_anom)
+        inst_smas = [(np.array([d['kepl_a'][ti][oi if oi==0 else oi-1] for ti in range(ntimes)]))*au_to_solrad for oi in range(nobjects)]
+        inst_eccs = [(np.array([d['kepl_e'][ti][oi if oi==0 else oi-1] for ti in range(ntimes)])) for oi in range(nobjects)]
+        inst_incls = [(np.array([d['kepl_in'][ti][oi if oi==0 else oi-1] for ti in range(ntimes)])) for oi in range(nobjects)]
+        inst_per0s = [(np.array([d['kepl_o'][ti][oi if oi==0 else oi-1] for ti in range(ntimes)])) for oi in range(nobjects)]
+        inst_long_ans = [(np.array([d['kepl_ln'][ti][oi if oi==0 else oi-1] for ti in range(ntimes)])) for oi in range(nobjects)]
+        inst_mean_anoms = [(np.array([d['kepl_ma'][ti][oi if oi==0 else oi-1] for ti in range(ntimes)])) for oi in range(nobjects)]
+
+        # compute period and t0_perpass from kepler's third law and mean anomaly
+        mass_tots = [np.sum(masses[:2 if oi==0 else oi+1]) for oi in range(nobjects)]
+        inst_periods = [_compute_period(smas, mass_tot) for smas, mass_tot in zip(inst_smas, mass_tots)]
+        # TODO: need to pass t0@system
+        inst_t0_perpasses = [_compute_t0_perpass(mean_anoms, periods) for mean_anoms, periods in zip(inst_mean_anoms, inst_periods)]
+
+        # TODO: actually compute d from the positions of the sibling component
+        inst_ds = [(np.array([None for ti in range(ntimes)])) for oi in range(nobjects)]
+
+        # TODO: update this from orbital and rotation periods
+        inst_Fs = [(np.array([None for ti in range(ntimes)])) for oi in range(nobjects)]
+
+        # TODO: check to make sure these are the right angles
         # TODO: need to add np.pi for secondary component?
-        # true anomaly + periastron
-        ethetas = [(np.array([d['kepl_o'][ti][oi]+d['kepl_m'][ti][oi]+np.pi/2 for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-        # elongans = [(np.array([d['kepl_ln'][ti][oi]+long_ans[0 if oi==0 else oi-1] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-        elongans = [(np.array([d['kepl_ln'][ti][oi]+long_ans[0 if oi==0 else oi-1] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-        # eincls = [(np.array([d['kepl_in'][ti][oi]+incls[0 if oi==0 else oi-1] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
-        eincls = [(np.array([d['kepl_in'][ti][oi]+np.pi-incls[0 if oi==0 else oi-1] for ti in range(ntimes)])*au_to_solrad) for oi in range(nobjects)]
+        inst_ethetas = [(np.array([d['kepl_o'][ti][oi if oi==0 else oi-1]+d['kepl_ma'][ti][oi if oi==0 else oi-1]+np.pi/2 for ti in range(ntimes)])) for oi in range(nobjects)]
+        inst_elongans = [(np.array([d['kepl_ln'][ti][oi if oi==0 else oi-1]+long_ans[0 if oi==0 else oi-1] for ti in range(ntimes)])) for oi in range(nobjects)]
+        inst_eincls = [(np.array([d['kepl_in'][ti][oi if oi==0 else oi-1]+np.pi-incls[0 if oi==0 else oi-1] for ti in range(ntimes)])) for oi in range(nobjects)]
 
-        periods = [[None for ti in range(ntimes)] for oi in range(nobjects)]
-        sma = [[None for ti in range(ntimes)] for oi in range(nobjects)]
-        eccs = [[None for ti in range(ntimes)] for oi in range(nobjects)]
-        per0s = [[None for ti in range(ntimes)] for oi in range(nobjects)]
-        long_ans = [[None for ti in range(ntimes)] for oi in range(nobjects)]
-        incls = [[None for ti in range(ntimes)] for oi in range(nobjects)]
-        t0_perpasses = [[None for ti in range(ntimes)] for oi in range(nobjects)]
 
-        # d, solRad [3], solRad/d [3], rad [3], ...
-        return ts, xs, ys, zs, vxs, vys, vzs, ds, Fs, ethetas, elongans, eincls, periods, smas, eccs, per0s, long_ans, incls, t0_perpasses
+        # d, solRad [3], solRad/d [3], solRad, unitless, rad [3], ...
+        return ts, xs, ys, zs, vxs, vys, vzs, inst_ds, inst_Fs, inst_ethetas, inst_elongans, inst_eincls, inst_periods, inst_smas, inst_eccs, inst_per0s, inst_long_ans, inst_incls, inst_t0_perpasses
 
     else:
         # d, solRad [3], solRad/d [3]

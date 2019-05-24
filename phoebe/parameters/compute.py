@@ -352,6 +352,8 @@ def photodynam(**kwargs):
     params += [ChoiceParameter(copy_for={'kind': ['star'], 'component': '*'}, component='_default', qualifier='distortion_method', value=kwargs.get('distortion_method', 'sphere'), choices=["sphere"], description='Method to use for distorting stars (photodynam only supports spherical stars)')]
 
     params += [ChoiceParameter(qualifier='irrad_method', value=kwargs.get('irrad_method', 'none'), choices=['none'], description='Which method to use to handle all irradiation effects (ellc does not support irradiation)')]
+    # params += [ChoiceParameter(qualifier='ltte', value=kwargs.get('ltte', 'True'), choices=['True'], description='Correct for light travel time effects')]
+
 
     return ParameterSet(params)
 

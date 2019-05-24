@@ -100,18 +100,21 @@ def _phoebe_v_photodynam(b, verbose=False, plot=False):
         # TODO: why the small discrepancy (visible especially in y, still <1e-11) - possibly a difference in time0 or just a precision limit in the photodynam backend since loading from a file??
 
 
-        if plot:
+        if plot or verbose:
             for k in ['us', 'vs', 'ws', 'vus', 'vvs', 'vws']:
-                plt.cla()
-                plt.plot(b.get_value('times', model='phoeberesults', component=comp, unit=u.d), b.get_value(k, model='phoeberesults', component=comp), 'r-')
-                plt.plot(b.get_value('times', model='phoeberesults', component=comp, unit=u.d), b.get_value(k, model='pdresults', component=comp), 'b-')
                 diff = abs(b.get_value(k, model='phoeberesults', component=comp) - b.get_value(k, model='pdresults', component=comp))
 
                 if verbose:
                     print("*** max abs ({}): {}".format(k, max(diff)))
-                plt.xlabel('t')
-                plt.ylabel(k)
-                plt.show()
+
+                if plot:
+                    plt.cla()
+                    plt.plot(b.get_value('times', model='phoeberesults', component=comp, unit=u.d), b.get_value(k, model='phoeberesults', component=comp), 'r-')
+                    plt.plot(b.get_value('times', model='phoeberesults', component=comp, unit=u.d), b.get_value(k, model='pdresults', component=comp), 'b-')
+
+                    plt.xlabel('t')
+                    plt.ylabel(k)
+                    plt.show()
 
         assert(np.allclose(b.get_value('times', dataset='orb01', model='phoeberesults', component=comp, unit=u.d), b.get_value('times', dataset='orb01', model='pdresults', component=comp, unit=u.d), atol=1e-6))
         assert(np.allclose(b.get_value('us', dataset='orb01', model='phoeberesults', component=comp, unit=u.AU), b.get_value('us', dataset='orb01', model='pdresults', component=comp, unit=u.AU), atol=1e-6))
@@ -180,7 +183,6 @@ def test_binary(verbose=False, plot=False):
     # TODO: once ps.copy is implemented, just send b.copy() to each of these
 
     b = phoebe.default_binary()
-    # b.set_value('integrator', 'mercurius', check_visible=False)
     _keplerian_v_nbody(b, verbose=verbose, plot=plot)
 
     b = phoebe.default_binary()
@@ -193,7 +195,7 @@ def test_binary(verbose=False, plot=False):
 
 
 if __name__ == '__main__':
-    logger = phoebe.logger(clevel='debug')
+    # logger = phoebe.logger(clevel='debug')
 
 
     test_binary(verbose=True, plot=False)
