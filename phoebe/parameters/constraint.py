@@ -1498,7 +1498,16 @@ def mass(b, component, solve_for=None, **kwargs):
     parentorbit_ps = _get_system_ps(b, parentorbit)
 
     mass = component_ps.get_parameter(qualifier='mass', **_skip_filter_checks)
-    mass_sibling = sibling_ps.get_parameter(qualifier='mass', **_skip_filter_checks)
+    if hier.get_kind_of(sibling) == 'orbit':
+        # we need the sum of the components in the orbit
+        mass_sibling_params = [_get_system_ps(b, star).get_parameter(qualifier='mass', **_skip_filter_checks) for star in hier.get_stars_of_children_of(sibling)]
+    else:
+        mass_sibling_params = [sibling_ps.get_parameter(qualifier='mass', **_skip_filter_checks)]
+
+    # this seems like a convoluted way to add... but we need to buildup the constraint expression
+    mass_sibling = mass_sibling_params[0]
+    for mass_sibling_param in mass_sibling_params[1:]:
+        mass_sibling += mass_sibling_param
 
     # we need to find the constraint attached to the other component... but we
     # don't know who is constrained, or whether it belongs to the sibling or parent
@@ -1560,7 +1569,7 @@ def mass(b, component, solve_for=None, **kwargs):
     else:
         raise NotImplementedError
 
-    return lhs, rhs, [mass_sibling, period, sma, q], {'component': component}
+    return lhs, rhs, mass_sibling_params+[period, sma, q], {'component': component}
 
 
     # ecosw_def = FloatParameter(qualifier='ecosw', value=0.0, default_unit=u.dimensionless_unscaled, limits=(-1.0,1.0), description='Eccentricity times cos of argument of periastron')
