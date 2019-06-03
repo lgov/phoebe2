@@ -3334,7 +3334,7 @@ class Pulsation(Feature):
         teffext = feature_ps.get_value(qualifier='teffext', **_skip_filter_checks)
 
         GM = c.G.to('solRad3 / (solMass d2)').value*b.get_value(qualifier='mass', component=feature_ps.component, context='component', unit=u.solMass, **_skip_filter_checks)
-        R = b.get_value(qualifier='rpole', component=feature_ps.component, section='component', unit=u.solRad, **_skip_filter_checks)
+        R = b.get_value(qualifier='requiv', component=feature_ps.component, section='component', unit=u.solRad, **_skip_filter_checks)
 
         tanamp = GM/R**3/freq**2
 
