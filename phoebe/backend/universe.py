@@ -3417,9 +3417,10 @@ class Pulsation(Feature):
         # if not self._teffext:
             # return coords_for_observations
 
-        x, y, z, r = coords_for_computations[:,0], coords_for_computations[:,1], coords_for_computations[:,2], np.sqrt((coords_for_computations**2).sum(axis=1))
+        x, y, z, r = coords_for_observations[:,0], coords_for_observations[:,1], coords_for_observations[:,2], np.sqrt((coords_for_observations**2).sum(axis=1))
         theta = np.arccos(z/r)
         phi = np.arctan2(y, x)
+        # print(x, y, z, r, theta, phi)
 
         #~ xi_r = self._radamp * Y(self._m, self._l, theta, phi) * np.exp(-1j*2*np.pi*self._freq*t)
         #~ xi_t = self._tanamp * self.dYdtheta(self._m, self._l, theta, phi) * np.exp(-1j*2*np.pi*self._freq*t)
