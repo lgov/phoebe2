@@ -117,7 +117,7 @@ def test_binary(verbose=False):
 
     for t0 in [0, 3.67]:
         b.set_value('t0', context='system', value=t0)
-        b.set_value_all('times', context='dataset', value=[b.get_value('t0', context='system')])
+        b.set_value_all('compute_times', context='dataset', value=[b.get_value('t0', context='system')])
         for ecc in [0.0, 0.2]:
             b.set_value('ecc', value=ecc)
             for p in [3]:
