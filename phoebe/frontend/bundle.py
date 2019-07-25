@@ -757,13 +757,22 @@ class Bundle(ParameterSet):
         if not force_build and not conf.devel:
             raise NotImplementedError("cached triple bundles not yet implemented, set force_build=True")
 
+        if contact_envelope:
+            inner_orbit_defaults = {'sma': 3.35, 'period': 0.5}
+            inner_star_defaults = {'requiv': 1.5}
+        else:
+            inner_orbit_defaults = {'sma': 5.3, 'period': 1.0}
+            inner_star_defaults = {'requiv': 1.0}
 
         b = cls()
-        b.add_star(component=starA)
-        b.add_star(component=starB)
-        b.add_star(component=starC)
-        b.add_orbit(component=inner, period=1)
+        starA_defaults = inner_star_defaults if hierarchy == '12' else {}
+        b.add_star(component=starA, **starA_defaults)
+        b.add_star(component=starB, **inner_star_defaults)
+        starC_defaults = inner_star_defaults if hierarchy == '21' else {}
+        b.add_star(component=starC, **starC_defaults)
+        b.add_orbit(component=inner, **inner_orbit_defaults)
         b.add_orbit(component=outer, period=10)
+
 
 
         if hierarchy == '21':
