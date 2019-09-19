@@ -10,6 +10,7 @@ null
 "context": "system", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "t0"
 }, 
 {
@@ -23,6 +24,7 @@ null
 "context": "system", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "ra"
 }, 
 {
@@ -36,6 +38,7 @@ null
 "context": "system", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "dec"
 }, 
 {
@@ -49,6 +52,7 @@ null
 "context": "system", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "distance"
 }, 
 {
@@ -62,6 +66,7 @@ null
 "context": "system", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "vgamma"
 }, 
 {
@@ -70,6 +75,7 @@ null
 "context": "system", 
 "copy_for": false, 
 "Class": "HierarchyParameter", 
+"advanced": true, 
 "qualifier": "hierarchy"
 }, 
 {
@@ -85,6 +91,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "requiv"
 }, 
 {
@@ -100,6 +107,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "requiv_max"
 }, 
 {
@@ -116,6 +124,7 @@ null
 "visible_if": "hierarchy.is_contact_binary:True", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "description": "Critical (minimum) value of the equivalent radius for the given morphology"
 }, 
 {
@@ -131,6 +140,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "teff"
 }, 
 {
@@ -147,6 +157,7 @@ null
 "visible_if": "hierarchy.is_contact_binary:False", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "description": "Abundance/Metallicity"
 }, 
 {
@@ -162,6 +173,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "logg"
 }, 
 {
@@ -178,13 +190,14 @@ null
 "visible_if": "hierarchy.is_binary:True", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "description": "Synchronicity parameter"
 }, 
 {
 "kind": "star", 
 "description": "Rotation period", 
 "limits": [
-0.0, 
+1e-06, 
 null
 ], 
 "default_unit": "d", 
@@ -193,6 +206,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "period"
 }, 
 {
@@ -208,6 +222,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "freq"
 }, 
 {
@@ -224,7 +239,8 @@ null
 "visible_if": "hierarchy.is_contact_binary:False,hierarchy.is_binary:True", 
 "copy_for": false, 
 "Class": "FloatParameter", 
-"description": "Pitch of the stellar rotation axis wrt the orbital rotation axis"
+"advanced": true, 
+"description": "Pitch of the stellar rotation axis wrt the orbital inclination"
 }, 
 {
 "context": "component", 
@@ -240,7 +256,8 @@ null
 "visible_if": "hierarchy.is_contact_binary:False,hierarchy.is_binary:True", 
 "copy_for": false, 
 "Class": "FloatParameter", 
-"description": "Yaw of the stellar rotation axis wrt the orbital rotation axis"
+"advanced": true, 
+"description": "Yaw of the stellar rotation axis wrt the orbital longitude of ascending node"
 }, 
 {
 "context": "component", 
@@ -256,6 +273,7 @@ null
 "visible_if": "hierarchy.is_contact_binary:False", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "description": "Inclination of the stellar rotation axis"
 }, 
 {
@@ -272,6 +290,7 @@ null
 "visible_if": "hierarchy.is_contact_binary:False", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "description": "Longitude of the ascending node (ie. equator) of the star"
 }, 
 {
@@ -287,11 +306,12 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "gravb_bol"
 }, 
 {
 "kind": "star", 
-"description": "ratio of incident bolometric light that is used for reflection (heating without redistribution)", 
+"description": "ratio of incident bolometric light that is used for reflection/irradiation (heating without redistribution)", 
 "limits": [
 0.0, 
 1.0
@@ -302,6 +322,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "irrad_frac_refl_bol"
 }, 
 {
@@ -317,11 +338,12 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "irrad_frac_lost_bol"
 }, 
 {
 "kind": "star", 
-"description": "Mode to use for limb-darkening", 
+"description": "Mode to use for bolometric limb-darkening (used only for irradiation).", 
 "component": "primary", 
 "value": "lookup", 
 "choices": [
@@ -331,11 +353,12 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "ld_mode_bol"
 }, 
 {
 "kind": "star", 
-"description": "Bolometric limb darkening model", 
+"description": "Bolometric limb darkening model (used only for irradiation).", 
 "component": "primary", 
 "value": "logarithmic", 
 "choices": [
@@ -348,38 +371,40 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "ld_func_bol"
 }, 
 {
-"context": "component", 
 "kind": "star", 
-"qualifier": "ld_coeffs_source_bol", 
+"description": "Source for bolometric limb darkening coefficients (used only for irradiation; 'auto' to interpolate from the applicable table according to the 'atm' parameter, or the name of a specific atmosphere table)", 
+"visible_if": "ld_mode_bol:lookup", 
 "component": "primary", 
 "value": "auto", 
 "choices": [
 "auto", 
 "ck2004"
 ], 
-"visible_if": "ld_mode_bol:lookup", 
+"context": "component", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
-"description": "Source for bolometric limb darkening coefficients ('auto' to interpolate from the applicable table according to the 'atm' parameter, or the name of a specific atmosphere table)"
+"advanced": true, 
+"qualifier": "ld_coeffs_source_bol"
 }, 
 {
-"context": "component", 
 "kind": "star", 
-"qualifier": "ld_coeffs_bol", 
-"default_unit": "", 
+"description": "Bolometric limb darkening coefficients (used only for irradiation).", 
+"visible_if": "ld_mode_bol:manual", 
 "component": "primary", 
+"default_unit": "", 
 "value": [
 0.5, 
 0.5
 ], 
 "allow_none": false, 
-"visible_if": "ld_mode_bol:manual", 
+"context": "component", 
 "copy_for": false, 
 "Class": "FloatArrayParameter", 
-"description": "Bolometric limb darkening coefficients"
+"qualifier": "ld_coeffs_bol"
 }, 
 {
 "kind": "star", 
@@ -394,6 +419,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "mass"
 }, 
 {
@@ -409,6 +435,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "requiv"
 }, 
 {
@@ -424,6 +451,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "requiv_max"
 }, 
 {
@@ -440,6 +468,7 @@ null
 "visible_if": "hierarchy.is_contact_binary:True", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "description": "Critical (minimum) value of the equivalent radius for the given morphology"
 }, 
 {
@@ -455,6 +484,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "teff"
 }, 
 {
@@ -471,6 +501,7 @@ null
 "visible_if": "hierarchy.is_contact_binary:False", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "description": "Abundance/Metallicity"
 }, 
 {
@@ -486,6 +517,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "logg"
 }, 
 {
@@ -502,13 +534,14 @@ null
 "visible_if": "hierarchy.is_binary:True", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "description": "Synchronicity parameter"
 }, 
 {
 "kind": "star", 
 "description": "Rotation period", 
 "limits": [
-0.0, 
+1e-06, 
 null
 ], 
 "default_unit": "d", 
@@ -517,6 +550,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "period"
 }, 
 {
@@ -532,6 +566,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "freq"
 }, 
 {
@@ -548,7 +583,8 @@ null
 "visible_if": "hierarchy.is_contact_binary:False,hierarchy.is_binary:True", 
 "copy_for": false, 
 "Class": "FloatParameter", 
-"description": "Pitch of the stellar rotation axis wrt the orbital rotation axis"
+"advanced": true, 
+"description": "Pitch of the stellar rotation axis wrt the orbital inclination"
 }, 
 {
 "context": "component", 
@@ -564,7 +600,8 @@ null
 "visible_if": "hierarchy.is_contact_binary:False,hierarchy.is_binary:True", 
 "copy_for": false, 
 "Class": "FloatParameter", 
-"description": "Yaw of the stellar rotation axis wrt the orbital rotation axis"
+"advanced": true, 
+"description": "Yaw of the stellar rotation axis wrt the orbital longitude of ascending node"
 }, 
 {
 "context": "component", 
@@ -580,6 +617,7 @@ null
 "visible_if": "hierarchy.is_contact_binary:False", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "description": "Inclination of the stellar rotation axis"
 }, 
 {
@@ -596,6 +634,7 @@ null
 "visible_if": "hierarchy.is_contact_binary:False", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "description": "Longitude of the ascending node (ie. equator) of the star"
 }, 
 {
@@ -611,11 +650,12 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "gravb_bol"
 }, 
 {
 "kind": "star", 
-"description": "ratio of incident bolometric light that is used for reflection (heating without redistribution)", 
+"description": "ratio of incident bolometric light that is used for reflection/irradiation (heating without redistribution)", 
 "limits": [
 0.0, 
 1.0
@@ -626,6 +666,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "irrad_frac_refl_bol"
 }, 
 {
@@ -641,11 +682,12 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "irrad_frac_lost_bol"
 }, 
 {
 "kind": "star", 
-"description": "Mode to use for limb-darkening", 
+"description": "Mode to use for bolometric limb-darkening (used only for irradiation).", 
 "component": "secondary", 
 "value": "lookup", 
 "choices": [
@@ -655,11 +697,12 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "ld_mode_bol"
 }, 
 {
 "kind": "star", 
-"description": "Bolometric limb darkening model", 
+"description": "Bolometric limb darkening model (used only for irradiation).", 
 "component": "secondary", 
 "value": "logarithmic", 
 "choices": [
@@ -672,38 +715,40 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "ld_func_bol"
 }, 
 {
-"context": "component", 
 "kind": "star", 
-"qualifier": "ld_coeffs_source_bol", 
+"description": "Source for bolometric limb darkening coefficients (used only for irradiation; 'auto' to interpolate from the applicable table according to the 'atm' parameter, or the name of a specific atmosphere table)", 
+"visible_if": "ld_mode_bol:lookup", 
 "component": "secondary", 
 "value": "auto", 
 "choices": [
 "auto", 
 "ck2004"
 ], 
-"visible_if": "ld_mode_bol:lookup", 
+"context": "component", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
-"description": "Source for bolometric limb darkening coefficients ('auto' to interpolate from the applicable table according to the 'atm' parameter, or the name of a specific atmosphere table)"
+"advanced": true, 
+"qualifier": "ld_coeffs_source_bol"
 }, 
 {
-"context": "component", 
 "kind": "star", 
-"qualifier": "ld_coeffs_bol", 
-"default_unit": "", 
+"description": "Bolometric limb darkening coefficients (used only for irradiation).", 
+"visible_if": "ld_mode_bol:manual", 
 "component": "secondary", 
+"default_unit": "", 
 "value": [
 0.5, 
 0.5
 ], 
 "allow_none": false, 
-"visible_if": "ld_mode_bol:manual", 
+"context": "component", 
 "copy_for": false, 
 "Class": "FloatArrayParameter", 
-"description": "Bolometric limb darkening coefficients"
+"qualifier": "ld_coeffs_bol"
 }, 
 {
 "kind": "star", 
@@ -718,13 +763,14 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "mass"
 }, 
 {
 "kind": "orbit", 
 "description": "Orbital period", 
 "limits": [
-0.0, 
+1e-06, 
 null
 ], 
 "default_unit": "d", 
@@ -733,6 +779,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "period"
 }, 
 {
@@ -748,6 +795,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "freq"
 }, 
 {
@@ -763,6 +811,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "dpdt"
 }, 
 {
@@ -778,6 +827,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "per0"
 }, 
 {
@@ -793,6 +843,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "dperdt"
 }, 
 {
@@ -808,6 +859,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "ecc"
 }, 
 {
@@ -823,6 +875,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "t0_perpass"
 }, 
 {
@@ -838,6 +891,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "t0_supconj"
 }, 
 {
@@ -853,6 +907,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "t0_ref"
 }, 
 {
@@ -868,6 +923,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "mean_anom"
 }, 
 {
@@ -883,6 +939,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "incl"
 }, 
 {
@@ -898,6 +955,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "q"
 }, 
 {
@@ -913,6 +971,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "sma"
 }, 
 {
@@ -928,6 +987,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "long_an"
 }, 
 {
@@ -943,6 +1003,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "asini"
 }, 
 {
@@ -958,6 +1019,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "ecosw"
 }, 
 {
@@ -973,6 +1035,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "qualifier": "esinw"
 }, 
 {
@@ -988,6 +1051,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "sma"
 }, 
 {
@@ -1003,6 +1067,7 @@ null
 "context": "component", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": true, 
 "qualifier": "sma"
 }, 
 {
@@ -1019,6 +1084,7 @@ null
 "in_solar_units": true, 
 "default_unit": "rad / d", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1035,6 +1101,7 @@ null
 "in_solar_units": false, 
 "default_unit": "", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1051,6 +1118,7 @@ null
 "in_solar_units": true, 
 "default_unit": "", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1067,6 +1135,7 @@ null
 "in_solar_units": true, 
 "default_unit": "rad / d", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1083,6 +1152,7 @@ null
 "in_solar_units": false, 
 "default_unit": "", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1099,6 +1169,7 @@ null
 "in_solar_units": true, 
 "default_unit": "", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1115,6 +1186,7 @@ null
 "in_solar_units": true, 
 "default_unit": "solRad", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1131,6 +1203,7 @@ null
 "in_solar_units": true, 
 "default_unit": "d", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1147,6 +1220,7 @@ null
 "in_solar_units": true, 
 "default_unit": "d", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1163,6 +1237,7 @@ null
 "in_solar_units": true, 
 "default_unit": "deg", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1184,6 +1259,7 @@ null
 "in_solar_units": true, 
 "default_unit": "", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1205,6 +1281,7 @@ null
 "in_solar_units": true, 
 "default_unit": "", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1221,6 +1298,7 @@ null
 "in_solar_units": true, 
 "default_unit": "rad / d", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1242,6 +1320,7 @@ null
 "in_solar_units": true, 
 "default_unit": "solMass", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1258,6 +1337,7 @@ null
 "in_solar_units": true, 
 "default_unit": "solRad", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1274,6 +1354,7 @@ null
 "in_solar_units": true, 
 "default_unit": "d", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1290,6 +1371,7 @@ null
 "in_solar_units": true, 
 "default_unit": "deg", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1306,6 +1388,7 @@ null
 "in_solar_units": true, 
 "default_unit": "deg", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1322,6 +1405,7 @@ null
 "in_solar_units": true, 
 "default_unit": "solRad", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1343,6 +1427,7 @@ null
 "in_solar_units": true, 
 "default_unit": "solMass", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1359,6 +1444,7 @@ null
 "in_solar_units": true, 
 "default_unit": "solRad", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1375,6 +1461,7 @@ null
 "in_solar_units": true, 
 "default_unit": "d", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1391,6 +1478,7 @@ null
 "in_solar_units": true, 
 "default_unit": "deg", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1407,6 +1495,7 @@ null
 "in_solar_units": true, 
 "default_unit": "deg", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1423,6 +1512,7 @@ null
 "in_solar_units": true, 
 "default_unit": "solRad", 
 "Class": "ConstraintParameter", 
+"advanced": false, 
 "description": "expression that determines the constraint"
 }, 
 {
@@ -1437,6 +1527,7 @@ null
 "dataset": "*"
 }, 
 "Class": "BoolParameter", 
+"advanced": false, 
 "qualifier": "enabled"
 }, 
 {
@@ -1451,6 +1542,7 @@ null
 "context": "feature"
 }, 
 "Class": "BoolParameter", 
+"advanced": false, 
 "qualifier": "enabled"
 }, 
 {
@@ -1465,6 +1557,7 @@ null
 "context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "dynamics_method"
 }, 
 {
@@ -1475,24 +1568,26 @@ null
 "context": "compute", 
 "copy_for": false, 
 "Class": "BoolParameter", 
+"advanced": false, 
 "qualifier": "ltte"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
 "description": "Whether to account for general relativity effects", 
-"value": false, 
 "visible_if": "dynamics_method:nbody", 
+"value": false, 
+"context": "compute", 
 "copy_for": false, 
 "Class": "BoolParameter", 
+"advanced": false, 
 "qualifier": "gr"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
-"qualifier": "integrator", 
+"description": "Which integrator to use within rebound", 
+"visible_if": "dynamics_method:nbody", 
 "value": "ias15", 
 "choices": [
 "ias15", 
@@ -1501,10 +1596,11 @@ null
 "leapfrog", 
 "mercurius"
 ], 
-"visible_if": "dynamics_method:nbody", 
+"context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
-"description": "Which integrator to use within rebound"
+"advanced": false, 
+"qualifier": "integrator"
 }, 
 {
 "context": "compute", 
@@ -1520,6 +1616,7 @@ null
 "visible_if": "dynamics_method:nbody", 
 "copy_for": false, 
 "Class": "FloatParameter", 
+"advanced": false, 
 "description": "stepsize for the N-body integrator"
 }, 
 {
@@ -1535,6 +1632,7 @@ null
 "context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "irrad_method"
 }, 
 {
@@ -1549,19 +1647,20 @@ null
 "context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
+"advanced": true, 
 "qualifier": "boosting_method"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
-"qualifier": "mesh_method", 
+"description": "Which method to use for discretizing the surface", 
+"visible_if": "hierarchy.is_meshable:true", 
 "component": "_default", 
 "value": "marching", 
 "choices": [
 "marching"
 ], 
-"visible_if": "hierarchy.is_meshable:true", 
+"context": "compute", 
 "copy_for": {
 "kind": [
 "star", 
@@ -1570,10 +1669,10 @@ null
 "component": "*"
 }, 
 "Class": "ChoiceParameter", 
-"description": "Which method to use for discretizing the surface"
+"advanced": false, 
+"qualifier": "mesh_method"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
 "qualifier": "ntriangles", 
@@ -1583,7 +1682,7 @@ null
 ], 
 "component": "_default", 
 "value": 1500, 
-"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
+"context": "compute", 
 "copy_for": {
 "kind": [
 "star", 
@@ -1591,14 +1690,16 @@ null
 ], 
 "component": "*"
 }, 
+"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
 "Class": "IntParameter", 
+"advanced": false, 
 "description": "Requested number of triangles (won't be exact)."
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
-"qualifier": "distortion_method", 
+"description": "Method to use for distorting stars", 
+"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
 "component": "_default", 
 "value": "roche", 
 "choices": [
@@ -1607,7 +1708,7 @@ null
 "sphere", 
 "none"
 ], 
-"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
+"context": "compute", 
 "copy_for": {
 "kind": [
 "star"
@@ -1615,7 +1716,8 @@ null
 "component": "*"
 }, 
 "Class": "ChoiceParameter", 
-"description": "Method to use for distorting stars"
+"advanced": false, 
+"qualifier": "distortion_method"
 }, 
 {
 "kind": "phoebe", 
@@ -1629,21 +1731,23 @@ null
 "context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
+"advanced": true, 
 "qualifier": "eclipse_method"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
-"qualifier": "horizon_method", 
+"description": "Type of horizon method", 
+"visible_if": "eclipse_method:native", 
 "value": "boolean", 
 "choices": [
 "boolean"
 ], 
-"visible_if": "eclipse_method:native", 
+"context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
-"description": "Type of horizon method"
+"advanced": true, 
+"qualifier": "horizon_method"
 }, 
 {
 "kind": "phoebe", 
@@ -1665,6 +1769,7 @@ null
 "component": "*"
 }, 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "atm"
 }, 
 {
@@ -1684,6 +1789,7 @@ null
 "numerical"
 ], 
 "Class": "ChoiceParameter", 
+"advanced": true, 
 "qualifier": "lc_method"
 }, 
 {
@@ -1704,10 +1810,10 @@ null
 "oversample"
 ], 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "fti_method"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
 "qualifier": "fti_oversample", 
@@ -1717,14 +1823,16 @@ null
 ], 
 "value": 5, 
 "dataset": "_default", 
-"visible_if": "fti_method:oversample", 
+"context": "compute", 
 "copy_for": {
 "kind": [
 "lc"
 ], 
 "dataset": "*"
 }, 
+"visible_if": "fti_method:oversample", 
 "Class": "IntParameter", 
+"advanced": false, 
 "description": "Number of times to sample per-datapoint for finite-time integration"
 }, 
 {
@@ -1748,17 +1856,18 @@ null
 "dynamical"
 ], 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "rv_method"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
 "description": "Whether gravitational redshift effects are enabled for RVs", 
+"visible_if": "rv_method:flux-weighted", 
 "component": "_default", 
 "value": false, 
 "dataset": "_default", 
-"visible_if": "rv_method:flux-weighted", 
+"context": "compute", 
 "copy_for": {
 "component": {
 "kind": "star"
@@ -1768,40 +1877,42 @@ null
 }
 }, 
 "Class": "BoolParameter", 
+"advanced": false, 
 "qualifier": "rv_grav"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
-"qualifier": "mesh_method", 
+"description": "Which method to use for discretizing the surface", 
+"visible_if": "hierarchy.is_meshable:true", 
 "component": "primary", 
 "value": "marching", 
 "choices": [
 "marching"
 ], 
-"visible_if": "hierarchy.is_meshable:true", 
+"context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
-"description": "Which method to use for discretizing the surface"
+"advanced": false, 
+"qualifier": "mesh_method"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
-"qualifier": "mesh_method", 
+"description": "Which method to use for discretizing the surface", 
+"visible_if": "hierarchy.is_meshable:true", 
 "component": "secondary", 
 "value": "marching", 
 "choices": [
 "marching"
 ], 
-"visible_if": "hierarchy.is_meshable:true", 
+"context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
-"description": "Which method to use for discretizing the surface"
+"advanced": false, 
+"qualifier": "mesh_method"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
 "qualifier": "ntriangles", 
@@ -1811,13 +1922,14 @@ null
 ], 
 "component": "primary", 
 "value": 1500, 
-"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
+"context": "compute", 
 "copy_for": false, 
+"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
 "Class": "IntParameter", 
+"advanced": false, 
 "description": "Requested number of triangles (won't be exact)."
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
 "qualifier": "ntriangles", 
@@ -1827,16 +1939,18 @@ null
 ], 
 "component": "secondary", 
 "value": 1500, 
-"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
+"context": "compute", 
 "copy_for": false, 
+"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
 "Class": "IntParameter", 
+"advanced": false, 
 "description": "Requested number of triangles (won't be exact)."
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
-"qualifier": "distortion_method", 
+"description": "Method to use for distorting stars", 
+"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
 "component": "primary", 
 "value": "roche", 
 "choices": [
@@ -1845,16 +1959,17 @@ null
 "sphere", 
 "none"
 ], 
-"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
+"context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
-"description": "Method to use for distorting stars"
+"advanced": false, 
+"qualifier": "distortion_method"
 }, 
 {
-"context": "compute", 
 "kind": "phoebe", 
 "compute": "phoebe01", 
-"qualifier": "distortion_method", 
+"description": "Method to use for distorting stars", 
+"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
 "component": "secondary", 
 "value": "roche", 
 "choices": [
@@ -1863,10 +1978,11 @@ null
 "sphere", 
 "none"
 ], 
-"visible_if": "mesh_method:marching,hierarchy.is_meshable:true", 
+"context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
-"description": "Method to use for distorting stars"
+"advanced": false, 
+"qualifier": "distortion_method"
 }, 
 {
 "kind": "phoebe", 
@@ -1883,6 +1999,7 @@ null
 "context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "atm"
 }, 
 {
@@ -1900,7 +2017,742 @@ null
 "context": "compute", 
 "copy_for": false, 
 "Class": "ChoiceParameter", 
+"advanced": false, 
 "qualifier": "atm"
+}, 
+{
+"description": "Source to use for highlight/uncover time for any figure in which time_source is set to default.", 
+"value": "None", 
+"choices": [
+"None", 
+"manual"
+], 
+"context": "figure", 
+"copy_for": false, 
+"Class": "ChoiceParameter", 
+"advanced": false, 
+"qualifier": "default_time_source"
+}, 
+{
+"context": "figure", 
+"qualifier": "default_time", 
+"limits": [
+null, 
+null
+], 
+"default_unit": "d", 
+"value": 0.0, 
+"visible_if": "default_time_source:manual", 
+"copy_for": false, 
+"Class": "FloatParameter", 
+"advanced": false, 
+"description": "Times to use for highlighting/uncovering if default_time_source=manual."
+}, 
+{
+"kind": "star", 
+"description": "Color to use for figures in which color_source is set to component", 
+"component": "primary", 
+"value": "blue", 
+"choices": [
+"black", 
+"blue", 
+"red", 
+"green", 
+"yellow", 
+"crimson", 
+"lawngreen", 
+"darkgray", 
+"lightgoldenrodyellow", 
+"lavender", 
+"floralwhite", 
+"lightseagreen", 
+"royalblue", 
+"gainsboro", 
+"darkslategray", 
+"lemonchiffon", 
+"antiquewhite", 
+"deeppink", 
+"magenta", 
+"palevioletred", 
+"lightslategray", 
+"hotpink", 
+"blueviolet", 
+"mediumspringgreen", 
+"silver", 
+"darkviolet", 
+"darkkhaki", 
+"steelblue", 
+"lightgray", 
+"lightcyan", 
+"white", 
+"slategray", 
+"burlywood", 
+"limegreen", 
+"gray", 
+"rosybrown", 
+"lightblue", 
+"snow", 
+"salmon", 
+"oldlace", 
+"magenta", 
+"gold", 
+"darkturquoise", 
+"darksalmon", 
+"thistle", 
+"mediumpurple", 
+"darkcyan", 
+"darkred", 
+"cyan", 
+"mediumturquoise", 
+"brown", 
+"olivedrab", 
+"palegreen", 
+"seashell", 
+"mintcream", 
+"saddlebrown", 
+"sandybrown", 
+"darkorange", 
+"rebeccapurple", 
+"lightyellow", 
+"yellow", 
+"indigo", 
+"indianred", 
+"mediumorchid", 
+"chartreuse", 
+"springgreen", 
+"lightsalmon", 
+"turquoise", 
+"orchid", 
+"purple", 
+"bisque", 
+"khaki", 
+"coral", 
+"azure", 
+"mediumvioletred", 
+"fuchsia", 
+"blanchedalmond", 
+"forestgreen", 
+"mediumseagreen", 
+"seagreen", 
+"mediumslateblue", 
+"paleturquoise", 
+"darkorchid", 
+"lightgreen", 
+"mediumaquamarine", 
+"darkgray", 
+"cyan", 
+"skyblue", 
+"lightpink", 
+"teal", 
+"dimgray", 
+"greenyellow", 
+"sienna", 
+"lime", 
+"peru", 
+"chocolate", 
+"olive", 
+"moccasin", 
+"darkslateblue", 
+"lightskyblue", 
+"plum", 
+"dodgerblue", 
+"tan", 
+"pink", 
+"powderblue", 
+"midnightblue", 
+"lightgray", 
+"linen", 
+"peachpuff", 
+"darkslategrey", 
+"goldenrod", 
+"darkmagenta", 
+"ghostwhite", 
+"cornsilk", 
+"aliceblue", 
+"lightslategrey", 
+"orangered", 
+"navajowhite", 
+"mistyrose", 
+"white", 
+"tomato", 
+"cadetblue", 
+"whitesmoke", 
+"papayawhip", 
+"gray", 
+"darkseagreen", 
+"slategrey", 
+"violet", 
+"honeydew", 
+"cornflowerblue", 
+"darkblue", 
+"lightsteelblue", 
+"aquamarine", 
+"orange", 
+"maroon", 
+"aqua", 
+"darkgoldenrod", 
+"palegoldenrod", 
+"lavenderblush", 
+"firebrick", 
+"darkolivegreen", 
+"darkgreen", 
+"yellowgreen", 
+"wheat", 
+"deepskyblue", 
+"beige", 
+"lightcoral", 
+"ivory", 
+"mediumblue", 
+"slateblue", 
+"navy", 
+"dimgray", 
+"indigo", 
+"gold", 
+"hotpink", 
+"firebrick", 
+"indianred", 
+"yellow", 
+"mistyrose", 
+"darkolivegreen", 
+"olive", 
+"darkseagreen", 
+"pink", 
+"tomato", 
+"lightcoral", 
+"orangered", 
+"navajowhite", 
+"lime", 
+"palegreen", 
+"darkslategrey", 
+"greenyellow", 
+"burlywood", 
+"seashell", 
+"mediumspringgreen", 
+"fuchsia", 
+"papayawhip", 
+"blanchedalmond", 
+"chartreuse", 
+"dimgray", 
+"peachpuff", 
+"springgreen", 
+"aquamarine", 
+"white", 
+"orange", 
+"lightsalmon", 
+"darkslategray", 
+"brown", 
+"ivory", 
+"dodgerblue", 
+"peru", 
+"lawngreen", 
+"chocolate", 
+"crimson", 
+"forestgreen", 
+"darkgray", 
+"lightseagreen", 
+"cyan", 
+"mintcream", 
+"silver", 
+"antiquewhite", 
+"mediumorchid", 
+"skyblue", 
+"gray", 
+"darkturquoise", 
+"goldenrod", 
+"darkgreen", 
+"floralwhite", 
+"darkviolet", 
+"darkgray", 
+"moccasin", 
+"saddlebrown", 
+"gray", 
+"darkslateblue", 
+"lightskyblue", 
+"lightpink", 
+"mediumvioletred", 
+"slategrey", 
+"deeppink", 
+"limegreen", 
+"darkmagenta", 
+"palegoldenrod", 
+"plum", 
+"turquoise", 
+"lightgray", 
+"lightgoldenrodyellow", 
+"darkgoldenrod", 
+"lavender", 
+"maroon", 
+"yellowgreen", 
+"sandybrown", 
+"thistle", 
+"violet", 
+"navy", 
+"magenta", 
+"dimgray", 
+"tan", 
+"rosybrown", 
+"olivedrab", 
+"lightblue", 
+"ghostwhite", 
+"honeydew", 
+"cornflowerblue", 
+"slateblue", 
+"linen", 
+"darkblue", 
+"powderblue", 
+"seagreen", 
+"darkkhaki", 
+"snow", 
+"sienna", 
+"mediumblue", 
+"royalblue", 
+"lightcyan", 
+"mediumpurple", 
+"midnightblue", 
+"cornsilk", 
+"paleturquoise", 
+"bisque", 
+"slategray", 
+"darkcyan", 
+"khaki", 
+"wheat", 
+"teal", 
+"darkorchid", 
+"salmon", 
+"deepskyblue", 
+"rebeccapurple", 
+"darkred", 
+"steelblue", 
+"palevioletred", 
+"lightslategray", 
+"aliceblue", 
+"lightslategrey", 
+"lightgreen", 
+"orchid", 
+"gainsboro", 
+"mediumseagreen", 
+"lightgray", 
+"mediumturquoise", 
+"lemonchiffon", 
+"cadetblue", 
+"lightyellow", 
+"lavenderblush", 
+"coral", 
+"purple", 
+"aqua", 
+"whitesmoke", 
+"mediumslateblue", 
+"darkorange", 
+"mediumaquamarine", 
+"darksalmon", 
+"beige", 
+"blueviolet", 
+"azure", 
+"lightsteelblue", 
+"oldlace"
+], 
+"context": "figure", 
+"copy_for": false, 
+"Class": "ChoiceParameter", 
+"advanced": false, 
+"qualifier": "color"
+}, 
+{
+"kind": "star", 
+"description": "Marker (datasets only, not models) to use for figures in which marker_source is set to component", 
+"component": "primary", 
+"value": ".", 
+"choices": [
+".", 
+"o", 
+"+", 
+"s", 
+"*", 
+"x", 
+"v", 
+"^", 
+"<", 
+">", 
+"p", 
+"h", 
+"o", 
+"D"
+], 
+"context": "figure", 
+"copy_for": false, 
+"Class": "ChoiceParameter", 
+"advanced": false, 
+"qualifier": "marker"
+}, 
+{
+"kind": "star", 
+"description": "Linestyle to use for figures in which linestyle_source is set to component", 
+"component": "primary", 
+"value": "solid", 
+"choices": [
+"solid", 
+"dashed", 
+"dotted", 
+"dashdot"
+], 
+"context": "figure", 
+"copy_for": false, 
+"Class": "ChoiceParameter", 
+"advanced": false, 
+"qualifier": "linestyle"
+}, 
+{
+"kind": "star", 
+"description": "Color to use for figures in which color_source is set to component", 
+"component": "secondary", 
+"value": "red", 
+"choices": [
+"black", 
+"blue", 
+"red", 
+"green", 
+"yellow", 
+"crimson", 
+"lawngreen", 
+"darkgray", 
+"lightgoldenrodyellow", 
+"lavender", 
+"floralwhite", 
+"lightseagreen", 
+"royalblue", 
+"gainsboro", 
+"darkslategray", 
+"lemonchiffon", 
+"antiquewhite", 
+"deeppink", 
+"magenta", 
+"palevioletred", 
+"lightslategray", 
+"hotpink", 
+"blueviolet", 
+"mediumspringgreen", 
+"silver", 
+"darkviolet", 
+"darkkhaki", 
+"steelblue", 
+"lightgray", 
+"lightcyan", 
+"white", 
+"slategray", 
+"burlywood", 
+"limegreen", 
+"gray", 
+"rosybrown", 
+"lightblue", 
+"snow", 
+"salmon", 
+"oldlace", 
+"magenta", 
+"gold", 
+"darkturquoise", 
+"darksalmon", 
+"thistle", 
+"mediumpurple", 
+"darkcyan", 
+"darkred", 
+"cyan", 
+"mediumturquoise", 
+"brown", 
+"olivedrab", 
+"palegreen", 
+"seashell", 
+"mintcream", 
+"saddlebrown", 
+"sandybrown", 
+"darkorange", 
+"rebeccapurple", 
+"lightyellow", 
+"yellow", 
+"indigo", 
+"indianred", 
+"mediumorchid", 
+"chartreuse", 
+"springgreen", 
+"lightsalmon", 
+"turquoise", 
+"orchid", 
+"purple", 
+"bisque", 
+"khaki", 
+"coral", 
+"azure", 
+"mediumvioletred", 
+"fuchsia", 
+"blanchedalmond", 
+"forestgreen", 
+"mediumseagreen", 
+"seagreen", 
+"mediumslateblue", 
+"paleturquoise", 
+"darkorchid", 
+"lightgreen", 
+"mediumaquamarine", 
+"darkgray", 
+"cyan", 
+"skyblue", 
+"lightpink", 
+"teal", 
+"dimgray", 
+"greenyellow", 
+"sienna", 
+"lime", 
+"peru", 
+"chocolate", 
+"olive", 
+"moccasin", 
+"darkslateblue", 
+"lightskyblue", 
+"plum", 
+"dodgerblue", 
+"tan", 
+"pink", 
+"powderblue", 
+"midnightblue", 
+"lightgray", 
+"linen", 
+"peachpuff", 
+"darkslategrey", 
+"goldenrod", 
+"darkmagenta", 
+"ghostwhite", 
+"cornsilk", 
+"aliceblue", 
+"lightslategrey", 
+"orangered", 
+"navajowhite", 
+"mistyrose", 
+"white", 
+"tomato", 
+"cadetblue", 
+"whitesmoke", 
+"papayawhip", 
+"gray", 
+"darkseagreen", 
+"slategrey", 
+"violet", 
+"honeydew", 
+"cornflowerblue", 
+"darkblue", 
+"lightsteelblue", 
+"aquamarine", 
+"orange", 
+"maroon", 
+"aqua", 
+"darkgoldenrod", 
+"palegoldenrod", 
+"lavenderblush", 
+"firebrick", 
+"darkolivegreen", 
+"darkgreen", 
+"yellowgreen", 
+"wheat", 
+"deepskyblue", 
+"beige", 
+"lightcoral", 
+"ivory", 
+"mediumblue", 
+"slateblue", 
+"navy", 
+"dimgray", 
+"indigo", 
+"gold", 
+"hotpink", 
+"firebrick", 
+"indianred", 
+"yellow", 
+"mistyrose", 
+"darkolivegreen", 
+"olive", 
+"darkseagreen", 
+"pink", 
+"tomato", 
+"lightcoral", 
+"orangered", 
+"navajowhite", 
+"lime", 
+"palegreen", 
+"darkslategrey", 
+"greenyellow", 
+"burlywood", 
+"seashell", 
+"mediumspringgreen", 
+"fuchsia", 
+"papayawhip", 
+"blanchedalmond", 
+"chartreuse", 
+"dimgray", 
+"peachpuff", 
+"springgreen", 
+"aquamarine", 
+"white", 
+"orange", 
+"lightsalmon", 
+"darkslategray", 
+"brown", 
+"ivory", 
+"dodgerblue", 
+"peru", 
+"lawngreen", 
+"chocolate", 
+"crimson", 
+"forestgreen", 
+"darkgray", 
+"lightseagreen", 
+"cyan", 
+"mintcream", 
+"silver", 
+"antiquewhite", 
+"mediumorchid", 
+"skyblue", 
+"gray", 
+"darkturquoise", 
+"goldenrod", 
+"darkgreen", 
+"floralwhite", 
+"darkviolet", 
+"darkgray", 
+"moccasin", 
+"saddlebrown", 
+"gray", 
+"darkslateblue", 
+"lightskyblue", 
+"lightpink", 
+"mediumvioletred", 
+"slategrey", 
+"deeppink", 
+"limegreen", 
+"darkmagenta", 
+"palegoldenrod", 
+"plum", 
+"turquoise", 
+"lightgray", 
+"lightgoldenrodyellow", 
+"darkgoldenrod", 
+"lavender", 
+"maroon", 
+"yellowgreen", 
+"sandybrown", 
+"thistle", 
+"violet", 
+"navy", 
+"magenta", 
+"dimgray", 
+"tan", 
+"rosybrown", 
+"olivedrab", 
+"lightblue", 
+"ghostwhite", 
+"honeydew", 
+"cornflowerblue", 
+"slateblue", 
+"linen", 
+"darkblue", 
+"powderblue", 
+"seagreen", 
+"darkkhaki", 
+"snow", 
+"sienna", 
+"mediumblue", 
+"royalblue", 
+"lightcyan", 
+"mediumpurple", 
+"midnightblue", 
+"cornsilk", 
+"paleturquoise", 
+"bisque", 
+"slategray", 
+"darkcyan", 
+"khaki", 
+"wheat", 
+"teal", 
+"darkorchid", 
+"salmon", 
+"deepskyblue", 
+"rebeccapurple", 
+"darkred", 
+"steelblue", 
+"palevioletred", 
+"lightslategray", 
+"aliceblue", 
+"lightslategrey", 
+"lightgreen", 
+"orchid", 
+"gainsboro", 
+"mediumseagreen", 
+"lightgray", 
+"mediumturquoise", 
+"lemonchiffon", 
+"cadetblue", 
+"lightyellow", 
+"lavenderblush", 
+"coral", 
+"purple", 
+"aqua", 
+"whitesmoke", 
+"mediumslateblue", 
+"darkorange", 
+"mediumaquamarine", 
+"darksalmon", 
+"beige", 
+"blueviolet", 
+"azure", 
+"lightsteelblue", 
+"oldlace"
+], 
+"context": "figure", 
+"copy_for": false, 
+"Class": "ChoiceParameter", 
+"advanced": false, 
+"qualifier": "color"
+}, 
+{
+"kind": "star", 
+"description": "Marker (datasets only, not models) to use for figures in which marker_source is set to component", 
+"component": "secondary", 
+"value": "o", 
+"choices": [
+".", 
+"o", 
+"+", 
+"s", 
+"*", 
+"x", 
+"v", 
+"^", 
+"<", 
+">", 
+"p", 
+"h", 
+"o", 
+"D"
+], 
+"context": "figure", 
+"copy_for": false, 
+"Class": "ChoiceParameter", 
+"advanced": false, 
+"qualifier": "marker"
+}, 
+{
+"kind": "star", 
+"description": "Linestyle to use for figures in which linestyle_source is set to component", 
+"component": "secondary", 
+"value": "dashed", 
+"choices": [
+"solid", 
+"dashed", 
+"dotted", 
+"dashdot"
+], 
+"context": "figure", 
+"copy_for": false, 
+"Class": "ChoiceParameter", 
+"advanced": false, 
+"qualifier": "linestyle"
 }, 
 {
 "description": "Version of PHOEBE - change with caution", 
@@ -1908,6 +2760,7 @@ null
 "context": "setting", 
 "copy_for": false, 
 "Class": "StringParameter", 
+"advanced": true, 
 "qualifier": "phoebe_version"
 }, 
 {
@@ -1916,6 +2769,7 @@ null
 "context": "setting", 
 "copy_for": false, 
 "Class": "BoolParameter", 
+"advanced": true, 
 "qualifier": "log_history"
 }, 
 {
@@ -1924,6 +2778,7 @@ null
 "context": "setting", 
 "copy_for": false, 
 "Class": "DictParameter", 
+"advanced": true, 
 "qualifier": "dict_filter"
 }, 
 {
@@ -1932,6 +2787,7 @@ null
 "context": "setting", 
 "copy_for": false, 
 "Class": "BoolParameter", 
+"advanced": true, 
 "qualifier": "dict_set_all"
 }, 
 {
@@ -1946,5 +2802,14 @@ null
 "copy_for": false, 
 "Class": "SelectParameter", 
 "qualifier": "run_checks_compute"
+}, 
+{
+"description": "Whether to automatically add figure parameters when a dataset is added with a new dataset type.", 
+"value": false, 
+"context": "setting", 
+"copy_for": false, 
+"Class": "BoolParameter", 
+"advanced": true, 
+"qualifier": "auto_add_figure"
 }
 ]
