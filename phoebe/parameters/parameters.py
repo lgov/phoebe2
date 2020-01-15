@@ -158,6 +158,7 @@ _forbidden_labels += ['times', 'fluxes', 'sigmas',
                      'compute_times', 'compute_phases', 'compute_phases_t0',
                      'ld_mode', 'ld_func', 'ld_coeffs', 'ld_coeffs_source',
                      'passband', 'intens_weighting',
+                     'Rv', 'Av', 'ebv',
                      'pblum_mode', 'pblum_ref', 'pblum', 'pbflux',
                      'pblum_dataset', 'pblum_component',
                      'l3_mode', 'l3', 'l3_frac',
@@ -1917,6 +1918,82 @@ class ParameterSet(object):
         return lst
         # return {k: v.to_json() for k,v in self.to_flat_dict().items()}
 
+    def export_arrays(self, fname,
+                      delimiter=' ',header='', footer='',
+                      comments='# ', encoding=None,
+                      **kwargs):
+        """
+        Export arrays from <phoebe.parameters.Parameter.FloatArrayParameter>
+        parameters to a file via `np.savetxt`.
+
+        NEW IN PHOEBE 2.2
+
+        Each parameter will have its array values as a column in the output
+        file in a format that can be reloaded manually with `np.loadtxt`.
+
+        Note: all parameters must be FloatArrayParameters and have the same
+        shape.
+
+
+        Arguments
+        ------------
+        * `fname` (string or file object): passed to np.savetxt.
+            If the filename ends in .gz, the file is automatically saved in
+            compressed gzip format. loadtxt understands gzipped files
+            transparently.
+        * `delimiter` (string, optional, default=' '): passed to np.savetxt.
+            String or character separating columns.
+        * `header` (string, optional): The header will automatically be appended
+            with the twigs of the parameters making up the columns and then
+            passed to np.savetxt.
+            String that will be written at the beginning of the file.
+        * `footer` (string, optional): passed to np.savetxt.
+            String that will be written at the end of the file.
+        * `comments` (string, optional, default='#'): passed to np.savetxt.
+            String that will be prepended to the `header` and `footer` strings,
+            to mark them as comments.
+        * `encoding` (None or string, optional, default=None): passed to np.savetxt.
+            Encoding used to encode the outputfile. Does not apply to output
+            streams. If the encoding is something other than ‘bytes’ or ‘latin1’
+            you will not be able to load the file in NumPy versions < 1.14.
+            Default is ‘latin1’.
+        * `**kwargs`: all additional keyword arguments will be sent to
+            <phoebe.parameters.ParameterSet.filter>.  The filter must result
+            in all <phoebe.parameters.Parameter.FloatArrayParameter> objects
+            with the same length, otherwise an error will be raised.
+
+
+        Returns
+        -----------
+        * (string or file object) `fname`
+
+        Raises
+        -----------
+        * TypeError: if not all parameters are of type
+            <phoebe.parameters.Parameter.FloatArrayParameter> or no parameters
+            are included in the filter.
+        """
+        if len(kwargs):
+            return self.filter(**kwargs).export_arrays(fname)
+
+        if not len(self.to_list()):
+            raise TypeError("no parameters to be exported")
+
+        for param in self.to_list():
+            if param.__class__.__name__ != 'FloatArrayParameter':
+                raise TypeError("all parameters must be of type FloatArrayParameter")
+
+        X = np.array([param.get_value() for param in self.to_list()]).T
+
+        header += delimiter.join([param.uniquetwig for param in self.to_list()])
+
+        np.savetxt(fname, X, delimiter=delimiter,
+                   header=header, footer=footer, comments=comments,
+                   encoding=encoding)
+
+        return fname
+
+
     def filter(self, twig=None, check_visible=True, check_default=True,
                check_advanced=False, check_single=False, **kwargs):
         """
@@ -3154,7 +3231,7 @@ class ParameterSet(object):
                 sigmas = self._bundle.get_dataset(dataset=ds).get_value('sigmas', component=ds_comp, unit=residuals.unit)
 
                 if len(sigmas):
-                    chi2 += np.sum(residuals.value**2 / sigmas.value**2)
+                    chi2 += np.sum(residuals.value**2 / sigmas**2)
                 else:
                     chi2 += np.sum(residuals.value**2)
 
@@ -3479,6 +3556,20 @@ class ParameterSet(object):
                     kwargs['{}qualifier'.format(direction)] = current_value
                     kwargs.setdefault('linestyle', 'none')
                     kwargs.setdefault('marker', '+')
+
+                    # now let's see if there are errors
+                    errorkey = '{}error'.format(direction)
+                    errors = kwargs.get(errorkey, None)
+                    if isinstance(errors, np.ndarray) or isinstance(errors, float) or isinstance(errors, int):
+                        kwargs[errorkey] = errors
+                    elif isinstance(errors, str):
+                        errors = self._bundle.get_quantity(qualifier=kwargs.get(errorkey), dataset=ps.dataset, context='dataset', check_visible=False)
+                        kwargs[errorkey] = errors
+                    else:
+                        sigmas = self._bundle.get_quantity(qualifier='sigmas', dataset=ps.dataset, context='dataset', check_visible=False)
+                        if len(sigmas):
+                            kwargs.setdefault(errorkey, sigmas)
+
 
                     return kwargs
 
@@ -3866,7 +3957,7 @@ class ParameterSet(object):
     def plot(self, twig=None, **kwargs):
         """
         High-level wrapper around matplotlib that uses
-        [autofig 1.0.0](https://github.com/kecnry/autofig/tree/1.0.0)
+        [autofig 1.1.0](https://autofig.readthedocs.io/en/1.1.0)
         under-the-hood for automated figure and animation production.
 
         For an even higher-level interface allowing to interactively set and
@@ -3897,7 +3988,7 @@ class ParameterSet(object):
         ```
 
         Note: not all options are listed below.  See the
-        [autofig](https://autofig.readthedocs.io/en/latest/)
+        [autofig](https://autofig.readthedocs.io/en/1.1.0/)
         tutorials and documentation for more options which are passed along
         via `**kwargs`.
 
@@ -3952,7 +4043,10 @@ class ParameterSet(object):
             z-axis.  By default, this will just order the points on a 2D plot.
             To plot in 3D, also pass `projection='3d'`.
         * `s` (strong/float/array, optional): qualifier/twig of the array to use
-            for size.  See the [autofig tutorial on size](https://autofig.readthedocs.io/en/latest/tutorials/size_modes/)
+            for size.  See the [autofig tutorial on size](https://autofig.readthedocs.io/en/1.1.0/tutorials/size_modes/)
+            for more information.
+        * `smode` (string, optional): mode for handling size (`s`).  See the
+            [autofig tutorial on size mode](https://autofig.readthedocs.io/en/1.1.0/tutorials/size_modes/)
             for more information.
         * `c` (string/float/array, optional): qualifier/twig of the array to use
             for color.
@@ -3975,14 +4069,17 @@ class ParameterSet(object):
             then setting `i` to phases will sort and connect the points in
             phase-order, whereas if set to `times` they will be sorted and connected
             in time-order, with linebreaks when needed for phase-wrapping.
-            See also the [autofig tutorial on a looping independent variable](https://autofig.readthedocs.io/en/latest/gallery/looping_indep/).
+            See also the [autofig tutorial on a looping independent variable](https://autofig.readthedocs.io/en/1.1.0/gallery/looping_indep/).
 
         * `xerror` (string/float/array, optional): qualifier/twig of the array to plot as
-            x-errors (will default based on `x` if not provided).
+            x-errors (will default based on `x` if not provided).  Pass None to
+            disable plotting xerrors.
         * `yerror` (string/float/array, optional): qualifier/twig of the array to plot as
-            y-errors (will default based on `y` if not provided).
+            y-errors (will default based on `y` if not provided).  Pass None to
+            disable plotting yerrors.
         * `zerror` (string/float/array, optional): qualifier/twig of the array to plot as
-            z-errors (will default based on `z` if not provided).
+            z-errors (will default based on `z` if not provided).  Pass None to
+            disable plotting zerrors.
 
         * `xunit` (string/unit, optional): unit to plot on the x-axis (will
             default on `x` if not provided).
@@ -4015,25 +4112,25 @@ class ParameterSet(object):
             only applicable for mesh plots).
 
         * `xlim` (tuple/string, optional): limits for the x-axis (will default on
-            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/latest/tutorials/limits/)
+            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/1.1.0/tutorials/limits/)
             for more information/choices.
         * `ylim` (tuple/string, optional): limits for the y-axis (will default on
-            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/latest/tutorials/limits/)
+            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/1.1.0/tutorials/limits/)
             for more information/choices.
         * `zlim` (tuple/string, optional): limits for the z-axis (will default on
-            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/latest/tutorials/limits/)
+            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/1.1.0/tutorials/limits/)
             for more information/choices.
         * `slim` (tuple/string, optional): limits for the size-axis (will default on
-            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/latest/tutorials/limits/)
+            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/1.1.0/tutorials/limits/)
             for more information/choices.
         * `clim` (tuple/string, optional): limits for the color-axis (will default on
-            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/latest/tutorials/limits/)
+            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/1.1.0/tutorials/limits/)
             for more information/choices.
         * `fclim` (tuple/string, optional): limits for the facecolor-axis (will default on
-            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/latest/tutorials/limits/)
+            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/1.1.0/tutorials/limits/)
             for more information/choices.
         * `eclim` (tuple/string, optional): limits for the edgecolor-axis (will default on
-            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/latest/tutorials/limits/)
+            data if not provided).  See [autofig tutorial on limits](https://autofig.readthedocs.io/en/1.1.0/tutorials/limits/)
             for more information/choices.
 
         * `fcmap` (string, optional): colormap to use for the facecolor-axis (will default on
@@ -4045,7 +4142,7 @@ class ParameterSet(object):
             See the [matplotlib colormap reference](https://matplotlib.org/3.1.0/gallery/color/colormap_reference.html)
             for a list of options (may vary based on installed version of matplotlib).
 
-        * `smode` (string, optional): size mode.  See the [autofig tutorial on sizes](https://autofig.readthedocs.io/en/latest/tutorials/size_modes/)
+        * `smode` (string, optional): size mode.  See the [autofig tutorial on sizes](https://autofig.readthedocs.io/en/1.1.0/tutorials/size_modes/)
             for more information.
 
         * `highlight` (bool, optional, default=True): whether to highlight at the
@@ -4076,9 +4173,13 @@ class ParameterSet(object):
         * `save` (string, optional, default=False): filename to save the
             figure (or False to not save).
         * `show` (bool, optional, default=False): whether to show the plot
+
         * `animate` (bool, optional, default=False): whether to animate the figure.
         * `interval` (int, optional, default=100): time in ms between each
             frame in the animation.  Applicable only if `animate` is True.
+        * `animate_callback` (callable, optional, default=None): Function which
+            takes the matplotlib figure object and will be called at each frame
+            within the animation.
 
         * `equal_aspect` (optional): whether to force the aspect ratio of the
             axes to be equal.  If not provided, this will default to True if
@@ -4094,13 +4195,13 @@ class ParameterSet(object):
 
         * `projection` (string, optional, default='2d'): whether to plot
             on a 2d or 3d axes.  If '3d', the orientation of the axes will
-            be provided by `azim` and `elev` (see [autofig tutorial on 3d](https://autofig.readthedocs.io/en/latest/tutorials/3d/))
+            be provided by `azim` and `elev` (see [autofig tutorial on 3d](https://autofig.readthedocs.io/en/1.1.0/tutorials/3d/))
         * `azim` (float or list, optional): azimuth to use when `projection`
             is '3d'.  If `animate` is True, then a tuple or list will allow
-            rotating the axes throughout the animation (see [autofig tutorial on 3d](https://autofig.readthedocs.io/en/latest/tutorials/3d/))
+            rotating the axes throughout the animation (see [autofig tutorial on 3d](https://autofig.readthedocs.io/en/1.1.0/tutorials/3d/))
         * `elev` (float or list, optional): elevation to use when `projection`
             is '3d'.  If `animate` is True, then a tuple or list will allow
-            rotating the axes throughout the animation (see [autofig tutorial on 3d](https://autofig.readthedocs.io/en/latest/tutorials/3d/))
+            rotating the axes throughout the animation (see [autofig tutorial on 3d](https://autofig.readthedocs.io/en/1.1.0/tutorials/3d/))
         * `exclude_back` (bool, optional): whether to exclude plotting the back
             of meshes when in '2d' projections.  Defaults to True if `fc` is
             not 'none' (otherwise defaults to False so that you can "see through"
@@ -4111,14 +4212,14 @@ class ParameterSet(object):
         * `draw_title` (bool, optional, default=False): whether to draw axes
             titles.
         * `subplot_grid` (tuple, optional, default=None): override the subplot
-            grid used (see [autofig tutorial on subplots](https://autofig.readthedocs.io/en/latest/tutorials/subplot_positioning/)
+            grid used (see [autofig tutorial on subplots](https://autofig.readthedocs.io/en/1.1.0/tutorials/subplot_positioning/)
             for more details).
 
         * `save_kwargs` (dict, optional): any kwargs necessary to pass on to
             save (only applicable if `animate=True`).  On many systems,
             it may be necessary to pass `save_kwargs={'writer': 'imagemagick'}`.
 
-        * `**kwargs`: additional keyword arguments are sent along to [autofig](https://autofig.readthedocs.io/en/latest/).
+        * `**kwargs`: additional keyword arguments are sent along to [autofig](https://autofig.readthedocs.io/en/1.1.0/).
 
         Returns
         --------
@@ -4143,6 +4244,7 @@ class ParameterSet(object):
         draw_title = kwargs.pop('draw_title', False)
         subplot_grid = kwargs.pop('subplot_grid', None)
         animate = kwargs.pop('animate', False)
+        animate_callback = kwargs.pop('animate_callback', None)
 
         if kwargs.get('projection', '2d') == '3d' and kwargs.get('ec', None) =='face':
             raise ValueError("projection='3d' and ec='face' do not work together.  Consider ec='none' instead.")
@@ -4206,7 +4308,6 @@ class ParameterSet(object):
 
         try:
             plot_kwargss = self._unpack_plotting_kwargs(animate=animate, **kwargs)
-
             # this loop handles any of the automatically-generated
             # multiple plotting calls, passing each on to autofig
             for plot_kwargs in plot_kwargss:
@@ -4239,6 +4340,7 @@ class ParameterSet(object):
                                           draw_title=draw_title,
                                           tight_layout=tight_layout,
                                           subplot_grid=subplot_grid,
+                                          animate_callback=animate_callback,
                                           **kwargs)
             except Exception as err:
                 self.clf()
@@ -4246,6 +4348,10 @@ class ParameterSet(object):
         else:
             afig = self.gcf()
             if not len(afig.axes):
+                # try to detect common causes and provide useful messages
+                if (kwargs.get('x', None) in ['xs', 'ys', 'zs'] and kwargs.get('y', None) in ['us', 'vs', 'ws']) or (kwargs.get('x', None) in ['us', 'vs', 'ws'] and kwargs.get('y', None) in ['xs', 'ys', 'zs']):
+                    raise ValueError("cannot mix xyz and uvw coordinates when plotting")
+
                 raise ValueError("Nothing could be found to plot.  Check all arguments.")
 
             fig = None
@@ -4270,6 +4376,7 @@ class ParameterSet(object):
             times = kwargs.get('times', kwargs.get('time', None))
             save_kwargs = kwargs.get('save_kwargs', {})
             interval = kwargs.get('interval', 100)
+            animate_callback = kwargs.get('animate_callback', None)
 
             if times is None:
                 # then let's try to get all SYNTHETIC times
@@ -4300,6 +4407,7 @@ class ParameterSet(object):
                                          draw_title=draw_title,
                                          tight_layout=tight_layout,
                                          subplot_grid=subplot_grid,
+                                         animate_callback=animate_callback,
                                          interval=interval,
                                          save=save,
                                          show=show,
@@ -6154,10 +6262,7 @@ class ChoiceParameter(Parameter):
         if value not in self.choices:
             raise ValueError("value for {} must be one of {}, not '{}'".format(self.uniquetwig, self.choices, value))
 
-        if self.qualifier=='passband' and value not in list_installed_passbands():
-            # then we need to download and install before setting
-            logger.info("downloading passband: {}".format(value))
-            download_passband(value)
+        # NOTE: downloading passbands from online is now handled by run_checks
 
         self._value = value
 
@@ -6183,12 +6288,7 @@ class ChoiceParameter(Parameter):
         if run_checks is None:
             run_checks = conf.interactive_checks
         if run_checks and self._bundle:
-            report = self._bundle.run_checks(allow_skip_constraints=True)
-            # passed is either False (failed) or None (raise Warning)
-            for item in report.items:
-                msg = item.message
-                msg += "  If not addressed, this warning will continue to be raised and will throw an error at run_compute."
-                logger.warning(msg)
+            report = self._bundle.run_checks(allow_skip_constraints=True, raise_logger_warning=True)
 
         self._add_history(redo_func='set_value', redo_kwargs={'value': value, 'uniqueid': self.uniqueid}, undo_func='set_value', undo_kwargs={'value': _orig_value, 'uniqueid': self.uniqueid})
 
@@ -6370,9 +6470,9 @@ class SelectParameter(Parameter):
         selection = []
         for v in self.get_value(**kwargs):
             for choice in self.choices:
-                if v==choice and choice not in selection:
+                if v==choice and choice not in selection and len(choice):
                     selection.append(choice)
-                elif _fnmatch(choice, v) and choice not in selection:
+                elif _fnmatch(choice, v) and choice not in selection and len(choice):
                     selection.append(choice)
 
         return selection
@@ -6430,10 +6530,7 @@ class SelectParameter(Parameter):
         if run_checks is None:
             run_checks = conf.interactive_checks
         if run_checks and self._bundle:
-            report = self._bundle.run_checks(allow_skip_constraints=True)
-            for item in report.items:
-                # passed is either False (failed) or None (raise Warning)
-                logger.warning(item.message)
+            report = self._bundle.run_checks(allow_skip_constraints=True, raise_logger_warning=True)
 
         self._add_history(redo_func='set_value', redo_kwargs={'value': value, 'uniqueid': self.uniqueid}, undo_func='set_value', undo_kwargs={'value': _orig_value, 'uniqueid': self.uniqueid})
 
@@ -7405,13 +7502,7 @@ class FloatParameter(Parameter):
         if run_checks is None:
             run_checks = conf.interactive_checks
         if run_checks and self._bundle:
-            report = self._bundle.run_checks(allow_skip_constraints=True)
-            for item in report.items:
-                # passed is either False (failed) or None (raise Warning)
-                msg = item.message
-                if item.fail:
-                    msg += "  If not addressed, this warning will continue to be raised and will throw an error at run_compute."
-                logger.warning(msg)
+            report = self._bundle.run_checks(allow_skip_constraints=True, raise_logger_warning=True)
 
         self._add_history(redo_func='set_quantity', redo_kwargs={'value': value, 'uniqueid': self.uniqueid}, undo_func='set_value', undo_kwargs={'value': _orig_quantity, 'uniqueid': self.uniqueid})
 
@@ -7623,7 +7714,10 @@ class FloatArrayParameter(FloatParameter):
             if not isinstance(qualifier_parameter, FloatArrayParameter):
                 raise KeyError("'{}' does not point to a FloatArrayParameter".format(qualifier))
 
-            value = np.interp(qualifier_interp_value, qualifier_parameter.get_value(), self.get_value())
+            qualifier_value = qualifier_parameter.get_value()
+            sort = qualifier_value.argsort()
+
+            value = np.interp(qualifier_interp_value, qualifier_value[sort], self.get_value()[sort])
 
         if unit is not None:
             if return_quantity:
@@ -8705,7 +8799,6 @@ class HierarchyParameter(StringParameter):
         This will return True if any of the following conditions are met:
         * `dpdt` is non-zero
         * `dperdt` is non-zero
-        * `deccdt` (devel-only) is none-zero
         * a feature (eg. spot) is attached to an asynchronous star (with
             non-unity value for `syncpar`).
 
@@ -8718,8 +8811,8 @@ class HierarchyParameter(StringParameter):
                 return True
             if self._bundle.get_value(qualifier='dperdt', component=orbit, context='component') != 0:
                 return True
-            if conf.devel and self._bundle.get_value(qualifier='deccdt', component=orbit, context='component') != 0:
-                return True
+            # if conf.devel and self._bundle.get_value(qualifier='deccdt', component=orbit, context='component') != 0:
+            #     return True
 
         for component in self.get_stars():
             if self._bundle.get_value('syncpar', component=component, context='component') != 1 and len(self._bundle.filter(context='feature', component=component)):
@@ -8740,6 +8833,8 @@ class ConstraintParameter(Parameter):
         """
         see <phoebe.parameters.Parameter.__init__>
         """
+        # the super call is popping default_unit, so we'll access it first
+        default_unit_kwargs = kwargs.get('default_unit', None)
         super(ConstraintParameter, self).__init__(qualifier=kwargs.pop('qualifier', None), value=value, description=kwargs.pop('description', 'constraint'), **kwargs)
 
         # usually its the bundle's job to attach param._bundle after the
@@ -8747,7 +8842,10 @@ class ConstraintParameter(Parameter):
         # bundle is necessary in order to intialize and set the value
         self._bundle = bundle
         if isinstance(value, ConstraintParameter):
-            default_unit = kwargs.get('default_unit', value.result.unit)
+            if default_unit_kwargs is None:
+                default_unit = value.result.unit
+            else:
+                default_unit = default_unit_kwargs
             value = value.get_value()
 
         else:
@@ -8982,7 +9080,7 @@ class ConstraintParameter(Parameter):
                 logger.debug("ConstraintParameter.get_parameter: reverting to filtering on bundle, could not {} find in {}".format(kwargs, vars.twigs))
                 kwargs['context'] = [c for c in self._bundle.contexts if c!='constraint']
                 return self._bundle.get_parameter(**kwargs)
-            raise KeyError("no result found")
+            raise ValueError("no result found for {} in bundle after checking in {}".format(kwargs, vars.twigs))
 
     @property
     def default_unit(self):
@@ -9731,6 +9829,7 @@ class JobParameter(Parameter):
         # TODO: may need to be more clever once remote servers are supported
         self._script_fname = os.path.join(location, '_{}.py'.format(self.uniqueid))
         self._results_fname = os.path.join(location, '_{}.out'.format(self.uniqueid))
+        self._err_fname = os.path.join(location, '_{}.err'.format(self.uniqueid))
 
         # TODO: add a description?
 
@@ -9874,9 +9973,22 @@ class JobParameter(Parameter):
         else:
 
             if self.status_method == 'exists':
-                output_exists = os.path.isfile("_{}.out".format(self.uniqueid))
-                if output_exists:
+                if self._value == 'error':
+                    # then error was already detected and we've already done cleanup
+                    status = 'error'
+                elif os.path.isfile(self._results_fname):
                     status = 'complete'
+                elif os.path.isfile(self._err_fname) and os.stat(self._err_fname).st_size > 0:
+                    # some warnings from other packages can be set to stderr
+                    # so we need to make sure the last line is actually from
+                    # raising an error.
+                    ferr = open(self._err_fname, 'r')
+                    msg = ferr.readlines()[-1]
+                    ferr.close()
+                    if 'Error' in msg.split()[0]:
+                        status = 'error'
+                    else:
+                        status = 'unknown'
                 else:
                     status = 'unknown'
             else:
@@ -9928,7 +10040,7 @@ class JobParameter(Parameter):
         #if self._value == 'loaded':
         #    raise ValueError("results have already been loaded")
         status = self.get_status()
-        if not wait and status!='complete':
+        if not wait and status not in ['complete', 'error']:
             if status in ['loaded']:
                 logger.info("job already loaded")
                 return self._bundle.get_model(self.model)
@@ -9937,7 +10049,7 @@ class JobParameter(Parameter):
                 return self
 
 
-        while self.get_status() not in ['complete', 'loaded']:
+        while self.get_status() not in ['complete', 'loaded', 'error']:
             # TODO: any way we can not make 2 calls to self.status here?
             logger.info("current status: {}, trying again in {}s".format(self.get_status(), sleep))
             time.sleep(sleep)
@@ -9961,7 +10073,18 @@ class JobParameter(Parameter):
             newparams = rjson['included']
             self._bundle._attach_param_from_server(newparams)
 
+        elif self.status == 'error':
+            ferr = open(self._err_fname, 'r')
+            msg = ferr.readlines()[-1]
+            ferr.close()
 
+            if cleanup:
+                os.remove(self._script_fname)
+                os.remove(self._err_fname)
+
+            self._value = 'error'
+
+            raise RuntimeError("compute job failed with error: {}".format(msg))
         else:
             logger.info("current status: {}, pulling job results".format(self.status))
             result_ps = self._retrieve_results()
@@ -9974,11 +10097,12 @@ class JobParameter(Parameter):
             if cleanup:
                 os.remove(self._script_fname)
                 os.remove(self._results_fname)
+                os.remove(self._err_fname)
 
-        self._value = 'loaded'
+            self._value = 'loaded'
 
-        # TODO: add history?
+            # TODO: add history?
 
-        self._bundle._handle_model_selectparams()
+            self._bundle._handle_model_selectparams()
 
-        return self._bundle.filter(model=self.model)
+            return self._bundle.filter(model=self.model)
