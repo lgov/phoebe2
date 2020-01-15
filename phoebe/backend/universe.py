@@ -361,10 +361,9 @@ class System(object):
                 # RVs etc don't have pblum_mode, but may still want luminosities
                 pblum_mode = 'absolute'
 
-            ignore_effects = pblum_mode not in ['pbflux']
-            logger.debug("system.compute_pblum_scalings: populating observables for dataset={} with ignore_effects={} for pblum_mode={}".format(dataset, ignore_effects, pblum_mode))
+            logger.debug("system.compute_pblum_scalings: populating observables for dataset={} with for pblum_mode={}".format(dataset, pblum_mode))
             self.populate_observables(t0, [kind], [dataset],
-                                        ignore_effects=ignore_effects)
+                                        ignore_effects=True)
 
             ds_components = hier_stars
             #ds_components = ds.filter(qualifier='pblum_ref', check_visible=False).components
@@ -414,34 +413,6 @@ class System(object):
             elif pblum_mode == 'dataset-coupled':
                 pblum_ref = ds.get_value(qualifier='pblum_dataset')
                 pblum_scale_copy_ds[dataset] = pblum_ref
-
-            elif pblum_mode == 'pbflux':
-                distance = b.get_value(qualifier='distance', context='system', unit=u.m)
-                pbflux = ds.get_value(qualifier='pbflux', unit=u.W/u.m**2) * distance**2
-
-                # TODO: add ld_func and ld_coeffs?
-                system_flux = np.sum([self.get_body(comp).compute_luminosity(dataset)/(4*np.pi) for comp in ds_components])
-
-                l3_mode = ds.get_value(qualifier='l3_mode')
-                # note that pbflux here is the flux requested in RELATIVE UNITS
-
-                # flux_sys = sum(L_star/4pi for star in stars)
-                # flux_tot = flux_sys/dist**2 + l3_flux
-                # l3_frac = l3_flux / flux_tot
-                # pblum_scale = pbflux / flux_tot
-
-                if l3_mode == 'flux':
-                    l3_flux = ds.get_value(qualifier='l3', unit=u.W/u.m**2)
-                    pblum_scale = (pbflux - l3_flux) / system_flux
-                elif l3_mode == 'fraction':
-                    l3_frac = ds.get_value(qualifier='l3_frac')
-                    l3_flux = l3_frac * pbflux
-                    pblum_scale = (pbflux - l3_flux) / system_flux
-                else:
-                    raise NotImplementedError("l3_mode={} not implemented for pblum scaling".format(l3_mode))
-
-                for comp in ds_components:
-                    self.get_body(comp).set_pblum_scale(dataset, component=comp, pblum_scale=pblum_scale)
 
             elif pblum_mode == 'dataset-scaled':
                 # for now we'll allow the scaling to fallback on 1.0, but not
@@ -528,10 +499,8 @@ class System(object):
         if self.irrad_method == 'none':
             return
 
-        # if 'teffs_post_reflection' in self.inst_vals.keys():
-        if not self.needs_recompute_instantaneous and not self.is_first_refl_iteration: # and 'teffs_post_reflection' in self.inst_vals.keys():
+        if not self.needs_recompute_instantaneous and not self.is_first_refl_iteration:
             logger.debug("reflection: using teffs from previous iteration")
-            # meshes.set_column_flat('teffs', self.inst_vals['teffs_post_reflection'])
             return
 
         if 'wd' in [body.mesh_method for body in self.bodies]:
@@ -570,7 +539,7 @@ class System(object):
             teffs_intrins_per_body = list(meshes.get_column('teffs', computed_type='for_computations').values())
 
             ld_func_and_coeffs = [tuple([_bytes(body.ld_func['bol'])] + [np.asarray(body.ld_coeffs['bol'])]) for body in self.bodies]
-
+            logger.debug("irradiation ld_func_and_coeffs: {}".format(ld_func_and_coeffs))
             fluxes_intrins_and_refl_per_body = libphoebe.mesh_radiosity_problem_nbody_convex(vertices_per_body,
                                                                                        triangles_per_body,
                                                                                        normals_per_body,
@@ -616,6 +585,10 @@ class System(object):
         # flux under stefan-boltzmann. These effective temperatures will
         # then be used for all passband intensities.
         teffs_intrins_and_refl_flat = teffs_intrins_flat * (fluxes_intrins_and_refl_flat / fluxes_intrins_flat) ** (1./4)
+
+        nanmask = np.isnan(teffs_intrins_and_refl_flat)
+        if np.any(nanmask):
+            raise ValueError("irradiation resulted in nans for teffs")
 
         meshes.set_column_flat('teffs', teffs_intrins_and_refl_flat)
 
@@ -1284,6 +1257,7 @@ class Star(Body):
                  long_an, t0, do_mesh_offset, mesh_init_phi,
 
                  atm, datasets, passband, intens_weighting,
+                 extinct, Rv,
                  ld_mode, ld_func, ld_coeffs, ld_coeffs_source,
                  lp_profile_rest,
                  requiv, sma,
@@ -1325,6 +1299,8 @@ class Star(Body):
         # DATSET-DEPENDENT DICTS
         self.passband = passband
         self.intens_weighting = intens_weighting
+        self.extinct = extinct
+        self.Rv = Rv
         self.ld_mode = ld_mode
         self.ld_func = ld_func
         self.ld_coeffs = ld_coeffs
@@ -1467,6 +1443,10 @@ class Star(Body):
         passband = {ds: b.get_value(qualifier='passband', dataset=ds, passband=passband_override) for ds in datasets_intens}
         intens_weighting_override = kwargs.pop('intens_weighting', None)
         intens_weighting = {ds: b.get_value(qualifier='intens_weighting', dataset=ds, intens_weighting=intens_weighting_override) for ds in datasets_intens}
+        ebv_override = kwargs.pop('ebv', None)
+        extinct = {ds: b.get_value('ebv', dataset=ds, context='dataset', ebv=ebv_override) for ds in datasets_intens}
+        Rv_override = kwargs.pop('Rv', None)
+        Rv = {ds: b.get_value('Rv', dataset=ds, context='dataset', Rv=Rv_override) for ds in datasets_intens}
         ld_mode_override = kwargs.pop('ld_mode', None)
         ld_mode = {ds: b.get_value(qualifier='ld_mode', dataset=ds, component=component, ld_mode=ld_mode_override) for ds in datasets_intens}
         ld_func_override = kwargs.pop('ld_func', None)
@@ -1482,6 +1462,7 @@ class Star(Body):
         profile_rest_override = kwargs.pop('profile_rest', None)
         lp_profile_rest = {ds: b.get_value(qualifier='profile_rest', dataset=ds, unit=u.nm, profile_rest=profile_rest_override) for ds in datasets_lp}
 
+
         # we'll pass kwargs on here so they can be overridden by the classmethod
         # of any subclass and then intercepted again by the __init__ by the
         # same subclass.  Note: kwargs also hold meshing kwargs which are used
@@ -1496,6 +1477,7 @@ class Star(Body):
                    datasets,
                    passband,
                    intens_weighting,
+                   extinct, Rv,
                    ld_mode,
                    ld_func,
                    ld_coeffs,
@@ -1965,11 +1947,17 @@ class Star(Body):
         passband = kwargs.get('passband', self.passband.get(dataset, None))
         intens_weighting = kwargs.get('intens_weighting', self.intens_weighting.get(dataset, None))
         atm = kwargs.get('atm', self.atm)
+        extinct = kwargs.get('extinct', self.extinct.get(dataset, None))
+        Rv = kwargs.get('Rv', self.Rv.get(dataset, None))
         ld_mode = kwargs.get('ld_mode', self.ld_mode.get(dataset, None))
         ld_func = kwargs.get('ld_func', self.ld_func.get(dataset, None))
         ld_coeffs = kwargs.get('ld_coeffs', self.ld_coeffs.get(dataset, None)) if ld_mode == 'manual' else None
         ld_coeffs_source = kwargs.get('ld_coeffs_source', self.ld_coeffs_source.get(dataset, 'none')) if ld_mode == 'lookup' else None
         if ld_mode == 'interp':
+            # calls to pb.Imu need to pass on ld_func='interp'
+            # NOTE: we'll do another check when calling pb.Imu, but we'll also
+            # change the value here for the debug logger
+            ld_func = 'interp'
             ldatm = atm
         elif ld_mode == 'lookup':
             if ld_coeffs_source == 'auto':
@@ -1998,11 +1986,11 @@ class Star(Body):
 
             pb = passbands.get_passband(passband)
 
-            if ldatm != 'none' and '{}_ld'.format(ldatm) not in pb.content:
+            if ldatm != 'none' and '{}:ldint'.format(ldatm) not in pb.content:
                 if ld_mode == 'lookup':
-                    raise ValueError("{} not supported for limb-darkening.  Try changing the value of the ld_coeffs_source parameter".format(ldatm))
+                    raise ValueError("{} not supported for limb-darkening with {}:{} passband.  Try changing the value of the ld_coeffs_source parameter".format(ldatm, pb.pbset, pb.pbname))
                 else:
-                    raise ValueError("{} not supported for limb-darkening.  Try changing the value of the atm parameter".format(ldatm))
+                    raise ValueError("{} not supported for limb-darkening with {}:{} passband.  Try changing the value of the atm parameter".format(ldatm, pb.pbset, pb.pbname))
 
             if intens_weighting=='photon':
                 ptfarea = pb.ptf_photon_area/pb.h/pb.c
@@ -2016,7 +2004,7 @@ class Star(Body):
                                  logg=self.mesh.loggs.for_computations,
                                  abun=self.mesh.abuns.for_computations,
                                  ldatm=ldatm,
-                                 ld_func=ld_func,
+                                 ld_func=ld_func if ld_mode != 'interp' else ld_mode,
                                  ld_coeffs=ld_coeffs,
                                  photon_weighted=intens_weighting=='photon')
             except ValueError as err:
@@ -2064,7 +2052,7 @@ class Star(Body):
                                      atm=atm,
                                      ldatm=ldatm,
                                      ldint=ldint,
-                                     ld_func=ld_func,
+                                     ld_func=ld_func if ld_mode != 'interp' else ld_mode,
                                      ld_coeffs=ld_coeffs,
                                      photon_weighted=intens_weighting=='photon')
 
@@ -2088,6 +2076,22 @@ class Star(Body):
             # boosting is aspect dependent so we don't need to correct the
             # normal intensities
             abs_intensities *= boost_factors
+
+            if extinct == 0.0:
+                extinct_factors = 1.0
+            else:
+                extinct_factors = pb.interpolate_extinct(Teff=self.mesh.teffs.for_computations,
+                                                         logg=self.mesh.loggs.for_computations,
+                                                         abun=self.mesh.abuns.for_computations,
+                                                         extinct=extinct,
+                                                         Rv=Rv,
+                                                         atm=atm,
+                                                         photon_weighted=intens_weighting=='photon')
+
+                # extinction is NOT aspect dependent, so we'll correct both
+                # normal and directional intensities
+                abs_intensities *= extinct_factors
+                abs_normal_intensities *= extinct_factors
 
             # Handle pblum - distance and l3 scaling happens when integrating (in observe)
             # we need to scale each triangle so that the summed normal_intensities over the
@@ -2122,6 +2126,7 @@ class Star_roche(Star):
                  long_an, t0, do_mesh_offset, mesh_init_phi,
 
                  atm, datasets, passband, intens_weighting,
+                 extinct, Rv,
                  ld_mode, ld_func, ld_coeffs, ld_coeffs_source,
                  lp_profile_rest,
                  requiv, sma,
@@ -2145,6 +2150,7 @@ class Star_roche(Star):
                                          do_mesh_offset, mesh_init_phi,
 
                                          atm, datasets, passband, intens_weighting,
+                                         extinct, Rv,
                                          ld_mode, ld_func, ld_coeffs, ld_coeffs_source,
                                          lp_profile_rest,
                                          requiv, sma,
@@ -2175,7 +2181,7 @@ class Star_roche(Star):
 
     @property
     def needs_recompute_instantaneous(self):
-        return len(self.features) > 0
+        return self.needs_remesh
 
     @property
     def needs_remesh(self):
@@ -2339,6 +2345,7 @@ class Star_roche_envelope_half(Star):
                  long_an, t0, do_mesh_offset, mesh_init_phi,
 
                  atm, datasets, passband, intens_weighting,
+                 extinct, Rv,
                  ld_mode, ld_func, ld_coeffs, ld_coeffs_source,
                  lp_profile_rest,
                  requiv, sma,
@@ -2366,6 +2373,7 @@ class Star_roche_envelope_half(Star):
                                          do_mesh_offset, mesh_init_phi,
 
                                          atm, datasets, passband, intens_weighting,
+                                         extinct, Rv,
                                          ld_mode, ld_func, ld_coeffs, ld_coeffs_source,
                                          lp_profile_rest,
                                          requiv, sma,
@@ -2538,6 +2546,7 @@ class Star_rotstar(Star):
                  long_an, t0, do_mesh_offset, mesh_init_phi,
 
                  atm, datasets, passband, intens_weighting,
+                 extinct, Rv,
                  ld_mode, ld_func, ld_coeffs, ld_coeffs_source,
                  lp_profile_rest,
                  requiv, sma,
@@ -2560,6 +2569,7 @@ class Star_rotstar(Star):
                                            do_mesh_offset, mesh_init_phi,
 
                                            atm, datasets, passband, intens_weighting,
+                                           extinct, Rv,
                                            ld_mode, ld_func, ld_coeffs, ld_coeffs_source,
                                            lp_profile_rest,
                                            requiv, sma,
@@ -2710,6 +2720,7 @@ class Star_sphere(Star):
                  long_an, t0, do_mesh_offset, mesh_init_phi,
 
                  atm, datasets, passband, intens_weighting,
+                 extinct, Rv,
                  ld_mode, ld_func, ld_coeffs, ld_coeffs_source,
                  lp_profile_rest,
                  requiv, sma,
@@ -2733,6 +2744,7 @@ class Star_sphere(Star):
                                           do_mesh_offset, mesh_init_phi,
 
                                           atm, datasets, passband, intens_weighting,
+                                          extinct, Rv,
                                           ld_mode, ld_func, ld_coeffs, ld_coeffs_source,
                                           lp_profile_rest,
                                           requiv, sma,
@@ -3150,6 +3162,9 @@ class Envelope(Body):
         # but keeps all this logic out of the Star classes
         for half, com in zip(self._halves, [0, 1]):
             half.update_position(component_com_x=com, *args, **kwargs)
+
+    def compute_luminosity(self, *args, **kwargs):
+        return np.sum([half.compute_luminosity(*args, **kwargs) for half in self._halves])
 
     def populate_observable(self, time, kind, dataset, **kwargs):
         """
