@@ -3370,6 +3370,7 @@ class Pulsation(Feature):
         GM = c.G.to('solRad3 / (solMass d2)').value*b.get_value(qualifier='mass', component=feature_ps.component, context='component', unit=u.solMass)
         R = b.get_value(qualifier='requiv', component=feature_ps.component, section='component', unit=u.solRad)
 
+        # cowling assumption
         tanamp = GM/R**3/freq**2
 
         return cls(radamp, freq, l, m, tanamp, teffext)
