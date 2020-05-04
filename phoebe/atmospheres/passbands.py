@@ -331,6 +331,18 @@ class Passband:
             data.append(fits.table_to_hdu(Table({'ebv': ph_ebvs}, meta={'extname': 'PH_EBVS'})))
             data.append(fits.table_to_hdu(Table({'rv': ph_rvs}, meta={'extname': 'PH_RVS'})))
 
+        if 'blended:Inorm' in self.content:
+            bl_teffs, bl_loggs, bl_abuns = self._blended_axes
+            data.append(fits.table_to_hdu(Table({'teff': bl_teffs}, meta={'extname': 'BL_TEFFS'})))
+            data.append(fits.table_to_hdu(Table({'logg': bl_loggs}, meta={'extname': 'BL_LOGGS'})))
+            data.append(fits.table_to_hdu(Table({'abun': bl_abuns}, meta={'extname': 'BL_ABUNS'})))
+
+        if 'blended:Imu' in self.content:
+            bl_mus = self._blended_intensity_axes[3]
+            bl_ldfuncs = self._blended_intensity_axes[4]
+            data.append(fits.table_to_hdu(Table({'mu': bl_mus}, meta={'extname': 'BL_MUS'})))
+            data.append(fits.table_to_hdu(Table({'ldfunc': bl_ldfuncs}, meta={'extname': 'BL_LDFUNCS'})))
+
         # Data:
         if 'blackbody:ext' in self.content:
             data.append(fits.ImageHDU(self._bb_extinct_energy_grid, name='BBEGRID'))
@@ -375,6 +387,14 @@ class Passband:
         if 'phoenix:ext' in self.content:
             data.append(fits.ImageHDU(self._phoenix_extinct_energy_grid, name='PHXEGRID'))
             data.append(fits.ImageHDU(self._phoenix_extinct_photon_grid, name='PHXPGRID'))
+
+        if 'blended:Inorm' in self.content:
+            data.append(fits.ImageHDU(self._blended_energy_grid, name='BLNEGRID'))
+            data.append(fits.ImageHDU(self._blended_photon_grid, name='BLNPGRID'))
+
+        if 'blended:Imu' in self.content:
+            data.append(fits.ImageHDU(self._blended_Imu_energy_grid, name='BLFEGRID'))
+            data.append(fits.ImageHDU(self._blended_Imu_photon_grid, name='BLFPGRID'))
 
         pb = fits.HDUList(data)
         pb.writeto(archive, overwrite=overwrite)
@@ -2778,6 +2798,16 @@ class Passband:
 
         return 10**Imu
 
+    def _Imu_blended(self, Teff, logg, abun, mu, photon_weighted=False):
+        if not hasattr(Teff, '__iter__'):
+            req = np.array(((Teff, logg, abun, mu),))
+            # Imu = ...
+        else:
+            req = np.vstack((Teff, logg, abun, mu)).T
+            # Imu = ...
+        
+        # return 10**Imu
+
     def Inorm(self, Teff=5772., logg=4.43, abun=0.0, atm='ck2004', ldatm='ck2004', ldint=None, ld_func='interp', ld_coeffs=None, photon_weighted=False):
         """
 
@@ -2912,12 +2942,17 @@ class Passband:
                 if np.any(nanmask):
                     raise ValueError('Atmosphere parameters out of bounds: Teff=%s, logg=%s, abun=%s, mu=%s' % (Teff[nanmask], logg[nanmask], abun[nanmask], mu[nanmask]))
                 return retval
+            elif atm == 'blended' and 'blended:Imu' in self.content:
+                retval = self._Imu_blended(Teff, logg, abun, mu, photon_weighted=photon_weighted)
+                nanmask = np.isnan(retval)
+                if np.any(nanmask):
+                    raise ValueError('Atmosphere parameters out of bounds: Teff=%s, logg=%s, abun=%s, mu=%s' % (Teff[nanmask], logg[nanmask], abun[nanmask], mu[nanmask]))
+                return retval
             else:
                 raise ValueError('atm={} not supported by {}:{} ld_func=interp'.format(atm, self.pbset, self.pbname))
 
         if ld_coeffs is None:
-            # LD function can be passed without coefficients; in that
-            # case we need to interpolate them from the tables.
+            # LD function can be passed without coefficients; in that case we need to interpolate them from the tables.
             ld_coeffs = self.interpolate_ldcoeffs(Teff, logg, abun, ldatm, ld_func, photon_weighted)
 
         if ld_func == 'linear':
