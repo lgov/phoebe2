@@ -27,8 +27,6 @@ import shutil
 import json
 import time
 
-if sys.version_info[0] == 3:
-  unicode = str
 
 try:
     # For Python 3.0 and later
@@ -3348,8 +3346,6 @@ def download_passband(passband, content=None, local=True, gzipped=None):
 
     if isinstance(content, str):
         content_str = content
-    elif isinstance(content, unicode):
-        content_str = str(content)
     elif isinstance(content, list) or isinstance(content, tuple):
         content_str = ",".join(content)
     else:
@@ -3366,8 +3362,8 @@ def download_passband(passband, content=None, local=True, gzipped=None):
     logger.info("downloading from {} and installing to {}...".format(url, passband_fname_local))
     try:
         urlretrieve(url, passband_fname_local)
-    except IOError:
-        raise IOError("unable to download {} passband - check connection".format(passband))
+    except IOError as e:
+        raise IOError("unable to download {} passband - check connection.  Original error: {}".format(passband, e))
     else:
         _init_passband(passband_fname_local)
 
@@ -3870,7 +3866,7 @@ def get_passband(passband, content=None, reload=False, update_if_necessary=False
         if content == 'all':
             content = online_content
         elif content is not None:
-            if isinstance(content, str) or isinstance(content, unicode):
+            if isinstance(content, str):
                 content = [content]
             # need to account for mixed atm/table content = ['ck2004', 'blackbody:Inorm']
             content_expanded = []
