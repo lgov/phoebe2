@@ -585,20 +585,28 @@ class Lc_GeometryBackend(BaseSolverBackend):
         t0_supconj_old = orbit_ps.get_value(qualifier='t0_supconj', **_skip_filter_checks)
 
         diagnose = kwargs.get('diagnose', False)
-        fit_result = lc_geometry.fit_lc(phases, fluxes, sigmas)
-        eclipse_dict = lc_geometry.compute_eclipse_params(phases, fluxes, sigmas, fit_result=fit_result, diagnose=diagnose)
+        # fit_result = lc_geometry.fit_lc(phases, fluxes, sigmas)
+        # eclipse_dict = lc_geometry.compute_eclipse_params(phases, fluxes, sigmas, fit_result=fit_result, diagnose=diagnose)
+        twogModels = lc_geometry.TwoGaussianModel(phases, fluxes, sigmas)
+        eclipse_dict = twogModels.compute_eclipse_params(diagnose=diagnose)
 
         edges = eclipse_dict.get('eclipse_edges')
         mask_phases = [(edges[0]-eclipse_dict.get('primary_width')*0.3, edges[1]+eclipse_dict.get('primary_width')*0.3), (edges[2]-eclipse_dict.get('secondary_width')*0.3, edges[3]+eclipse_dict.get('secondary_width')*0.3)]
 
-        # TODO: update to use widths as well (or alternate based on ecc?)
-        ecc, per0 = lc_geometry.ecc_w_from_geometry(eclipse_dict.get('secondary_position') - eclipse_dict.get('primary_position'), eclipse_dict.get('primary_width'), eclipse_dict.get('secondary_width'))
+        # ecc, per0 = lc_geometry.ecc_w_from_geometry(eclipse_dict.get('secondary_position') - eclipse_dict.get('primary_position'), eclipse_dict.get('primary_width'), eclipse_dict.get('secondary_width'))
 
         # TODO: create parameters in the solver options if we want to expose these options to the user
         # if t0_near_times == True the computed t0 is adjusted to fall in time times array range
         t0_near_times = kwargs.get('t0_near_times', True)
+        fit_eclipses = kwargs.get('fit_eclipses', False)
 
-        t0_supconj_new = lc_geometry.t0_from_geometry(eclipse_dict.get('primary_position'), times,
+        paramValues = lc_geometry.GeometryParams(eclipse_dict, fit_eclipses=fit_eclipses, phases=phases, fluxes=fluxes, sigmas=sigmas)
+        
+        # TODO: add parameters for rsum, teffratio and potentially rratio/incl
+        # if fit_eclipses is False, the associated parameters can be accessed as paramValues.rsum and .teffratio (in addition to .ecc and .per0)
+        # if fit_eclipses is True, paramValues.rratio and .incl can also be returned to the user
+
+        t0_supconj_new = paramValues._t0_from_geometry(times,
                                 period=period, t0_supconj=t0_supconj_old, t0_near_times=t0_near_times)
 
         fitted_params = [t0_supconj_param, ecc_param, per0_param]
@@ -606,7 +614,7 @@ class Lc_GeometryBackend(BaseSolverBackend):
 
         fitted_uniqueids = [p.uniqueid for p in fitted_params]
         fitted_twigs = [p.twig for p in fitted_params]
-        fitted_values = [t0_supconj_new, ecc, per0]
+        fitted_values = [t0_supconj_new, paramValues.ecc, paramValues.per0]
         fitted_values += [mask_phases for ds in lc_datasets]
         fitted_units = [u.d.to_string(), u.dimensionless_unscaled.to_string(), u.rad.to_string()]
         fitted_units += [u.dimensionless_unscaled.to_string() for ds in lc_datasets]
@@ -633,12 +641,12 @@ class Lc_GeometryBackend(BaseSolverBackend):
             # then resample the models and store in the solution
             analytic_phases = np.linspace(-0.5, 0.5, 201)
             analytic_fluxes = {}
-            for model, params in fit_result['fits'].items():
-                analytic_fluxes[model] = getattr(lc_geometry, 'const' if model=='C' else model.lower())(analytic_phases, *params[0])
+            for model, params in twogModels.fits.items():
+                analytic_fluxes[model] = getattr(twogModels, 'const' if model=='C' else model.lower())(analytic_phases, *params[0])
 
             return_ += [{'qualifier': 'analytic_phases', 'value': analytic_phases},
                         {'qualifier': 'analytic_fluxes', 'value': analytic_fluxes},
-                        {'qualifier': 'analytic_best_model', 'value': fit_result['best_fit']}
+                        {'qualifier': 'analytic_best_model', 'value': twogModels.best_fit}
                         ]
 
 
@@ -1041,10 +1049,9 @@ class EbaiBackend(BaseSolverBackend):
             ecl_positions = lc_geom_dict.get('ecl_positions')
             # assume primary is close to zero?
             pshift = ecl_positions[np.argmin(abs(np.array(ecl_positions)))]
-            fit_result = lc_geometry.fit_lc(phases-pshift, fluxes, sigmas)
-            best_fit = fit_result['best_fit']
+            twogModels = lc_geometry.TwoGaussianModel(phases, fluxes, sigmas)
             ebai_phases = np.linspace(-0.5,0.5,201)
-            ebai_fluxes = getattr(lc_geometry, 'const' if best_fit=='C' else best_fit.lower())(ebai_phases, *fit_result['fits'][best_fit][0])
+            ebai_fluxes = getattr(twogModels, 'const' if twogModels.best_fit=='C' else twogModels.best_fit.lower())(ebai_phases, *twogModels.fits[twogModels.best_fit][0])
             fluxes /= ebai_fluxes.max()
             ebai_fluxes /= ebai_fluxes.max()
 
