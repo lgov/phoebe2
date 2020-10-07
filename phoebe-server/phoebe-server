@@ -1016,6 +1016,8 @@ def bundle_method(msg):
         # forbid expensive computations on this server
         msg['max_computations'] = _max_computations
         msg['detach'] = True
+    elif method in ['run_solver']: 
+        msg['interactive'] = False
     elif method in ['attach_job']:
         msg['wait'] = False
         # msg['cleanup'] = False

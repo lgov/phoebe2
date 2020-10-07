@@ -276,6 +276,7 @@ def lc_geometry(**kwargs):
 
     params += [BoolParameter(qualifier='expose_model', value=kwargs.get('expose_model', True), description='Whether to expose the 2-gaussian analytical models in the solution')]
     params += [BoolParameter(qualifier='fit_eclipses', value=kwargs.get('fit_eclipses', False), description='Whether to fit an ellc model to the eclipses to estimate requivratio and incl')]
+    params += [BoolParameter(qualifier='interactive', value=kwargs.get('interactive', False), advanced=True, description='If True, opens an interactive plot that allows for manual adjustment of the eclipse edges.')]
     return ParameterSet(params)
 
 def rv_geometry(**kwargs):

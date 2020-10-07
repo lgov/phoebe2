@@ -313,7 +313,7 @@ class TwoGaussianModel(object):
         self.bics = bics
 
 
-    def compute_eclipse_params(self, diagnose=False):
+    def compute_eclipse_params(self, interactive=False):
 
         model_params = self.params[self.best_fit]
 
@@ -343,7 +343,7 @@ class TwoGaussianModel(object):
         eclipse_edges = [pos1 - 0.5*width1, pos1+0.5*width1, pos2-0.5*width2, pos2+0.5*width2]
 
 
-        if diagnose:
+        if interactive:
             phases_w, fluxes_w, sigmas_w = self.extend_phasefolded_lc()
             [ecl1_l, ecl1_r, ecl2_l, ecl2_r] = eclipse_edges
 
@@ -527,10 +527,18 @@ class GeometryParams(object):
         
 
     def _teffratio(self):
+        '''
+        This holds only under the assumption of ecc=0, but it's the best first analytical guess we can get.
+        '''
         self.teffratio = (self.depth2/self.depth1)**0.25
 
     
     def _rsum(self):
+        '''
+        The full equation for the eclipse widths contains a factor that depends on cos(incl) and requivratio.
+        If we assume incl=90, that factor is 0 and the remaining is what we use to derive the equations for
+        requivsum based on the widths of the primary and secondary eclipse below.
+        '''
         rsum1 = np.pi*self.width1*(1-self.ecc**2)/(1+self.ecc*np.sin(self.per0))
         rsum2 = np.pi*self.width2*(1-self.ecc**2)/(1-self.ecc*np.sin(self.per0))
         self.rsum = np.average([rsum1, rsum2])

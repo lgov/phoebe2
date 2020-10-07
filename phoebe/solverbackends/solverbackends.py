@@ -586,11 +586,11 @@ class Lc_GeometryBackend(BaseSolverBackend):
         period = orbit_ps.get_value(qualifier='period', **_skip_filter_checks)
         t0_supconj_old = orbit_ps.get_value(qualifier='t0_supconj', **_skip_filter_checks)
 
-        diagnose = kwargs.get('diagnose', False)
+        interactive = kwargs.get('interactive', False)
         # fit_result = lc_geometry.fit_lc(phases, fluxes, sigmas)
         # eclipse_dict = lc_geometry.compute_eclipse_params(phases, fluxes, sigmas, fit_result=fit_result, diagnose=diagnose)
         twogModels = lc_geometry.TwoGaussianModel(phases, fluxes, sigmas)
-        eclipse_dict = twogModels.compute_eclipse_params(diagnose=diagnose)
+        eclipse_dict = twogModels.compute_eclipse_params(interactive=interactive)
 
         edges = eclipse_dict.get('eclipse_edges')
         mask_phases = [(edges[0]-eclipse_dict.get('primary_width')*0.3, edges[1]+eclipse_dict.get('primary_width')*0.3), (edges[2]-eclipse_dict.get('secondary_width')*0.3, edges[3]+eclipse_dict.get('secondary_width')*0.3)]
