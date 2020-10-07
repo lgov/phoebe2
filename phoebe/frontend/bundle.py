@@ -10757,7 +10757,7 @@ class Bundle(ParameterSet):
 
         ## add any necessary constraints needed by the solver
         solver_kind = func.__name__
-        if solver_kind in ['ebai']:
+        if solver_kind in ['ebai', 'lc_geometry']:
             for orbit in self.hierarchy.get_orbits():
                 orbit_ps = self.get_orbit(component=orbit, **_skip_filter_checks)
                 for constraint in ['teffratio', 'requivsumfrac']:

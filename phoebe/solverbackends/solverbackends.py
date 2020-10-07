@@ -580,6 +580,8 @@ class Lc_GeometryBackend(BaseSolverBackend):
         ecc_param = orbit_ps.get_parameter(qualifier='ecc', **_skip_filter_checks)
         per0_param = orbit_ps.get_parameter(qualifier='per0', **_skip_filter_checks)
         t0_supconj_param = orbit_ps.get_parameter(qualifier='t0_supconj', **_skip_filter_checks)
+        requivsum_param = orbit_ps.get_parameter(qualifier='requivsumfrac', **_skip_filter_checks)
+        teffratio_param = orbit_ps.get_parameter(qualifier='teffratio', **_skip_filter_checks)
 
         period = orbit_ps.get_value(qualifier='period', **_skip_filter_checks)
         t0_supconj_old = orbit_ps.get_value(qualifier='t0_supconj', **_skip_filter_checks)
@@ -600,6 +602,15 @@ class Lc_GeometryBackend(BaseSolverBackend):
         t0_near_times = kwargs.get('t0_near_times', True)
         fit_eclipses = kwargs.get('fit_eclipses', False)
 
+        if fit_eclipses:
+            for constraint in ['requivratio']:
+                if constraint not in orbit_ps.qualifiers:
+                    logger.warning("adding {} constraint to {} orbit (needed for lc_geometry with fit_eclipses)".format(constraint, orbit))
+                    b.add_constraint(constraint, component=orbit)
+
+            requivratio_param = orbit_ps.get_parameter(qualifier='requivratio', **_skip_filter_checks)
+            incl_param = orbit_ps.get_parameter(qualifier='incl', component='binary', **_skip_filter_checks)
+
         paramValues = lc_geometry.GeometryParams(eclipse_dict, fit_eclipses=fit_eclipses, phases=phases, fluxes=fluxes, sigmas=sigmas)
         
         # TODO: add parameters for rsum, teffratio and potentially rratio/incl
@@ -609,14 +620,22 @@ class Lc_GeometryBackend(BaseSolverBackend):
         t0_supconj_new = paramValues._t0_from_geometry(times,
                                 period=period, t0_supconj=t0_supconj_old, t0_near_times=t0_near_times)
 
-        fitted_params = [t0_supconj_param, ecc_param, per0_param]
+        fitted_params = [t0_supconj_param, ecc_param, per0_param, requivsum_param, teffratio_param]
+        if fit_eclipses:
+            fitted_params += [requivratio_param, incl_param]
         fitted_params += b.filter(qualifier='mask_phases', dataset=lc_datasets, **_skip_filter_checks).to_list()
 
         fitted_uniqueids = [p.uniqueid for p in fitted_params]
         fitted_twigs = [p.twig for p in fitted_params]
-        fitted_values = [t0_supconj_new, paramValues.ecc, paramValues.per0]
+
+        fitted_values = [t0_supconj_new, paramValues.ecc, paramValues.per0, paramValues.rsum, paramValues.teffratio]
+        if fit_eclipses:
+            fitted_values += [paramValues.rratio, paramValues.incl]
         fitted_values += [mask_phases for ds in lc_datasets]
-        fitted_units = [u.d.to_string(), u.dimensionless_unscaled.to_string(), u.rad.to_string()]
+
+        fitted_units = [u.d.to_string(), u.dimensionless_unscaled.to_string(), u.rad.to_string(), u.dimensionless_unscaled.to_string(), u.dimensionless_unscaled.to_string()]
+        if fit_eclipses:
+            fitted_units += [u.dimensionless_unscaled.to_string(), u.deg.to_string()]
         fitted_units += [u.dimensionless_unscaled.to_string() for ds in lc_datasets]
 
         return_ = [{'qualifier': 'primary_width', 'value': eclipse_dict.get('primary_width')},
@@ -634,7 +653,7 @@ class Lc_GeometryBackend(BaseSolverBackend):
                    {'qualifier': 'fitted_twigs', 'value': fitted_twigs},
                    {'qualifier': 'fitted_values', 'value': fitted_values},
                    {'qualifier': 'fitted_units', 'value': fitted_units},
-                   {'qualifier': 'adopt_parameters', 'value': fitted_twigs[:3], 'choices': fitted_twigs},
+                   {'qualifier': 'adopt_parameters', 'value': fitted_twigs[:-1], 'choices': fitted_twigs},
                    ]
 
         if kwargs.get('expose_model', True):

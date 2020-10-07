@@ -275,7 +275,7 @@ def lc_geometry(**kwargs):
     params += [BoolParameter(qualifier='t0_near_times', value=kwargs.get('t0_near_times', True), description='Whether the returned value for t0_supconj should be forced to be in the range of the referenced observations.')]
 
     params += [BoolParameter(qualifier='expose_model', value=kwargs.get('expose_model', True), description='Whether to expose the 2-gaussian analytical models in the solution')]
-
+    params += [BoolParameter(qualifier='fit_eclipses', value=kwargs.get('fit_eclipses', False), description='Whether to fit an ellc model to the eclipses to estimate requivratio and incl')]
     return ParameterSet(params)
 
 def rv_geometry(**kwargs):

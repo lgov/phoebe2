@@ -531,7 +531,9 @@ class GeometryParams(object):
 
     
     def _rsum(self):
-        self.rsum = np.pi * np.average([self.width1, self.width2])
+        rsum1 = np.pi*self.width1*(1-self.ecc**2)/(1+self.ecc*np.sin(self.per0))
+        rsum2 = np.pi*self.width2*(1-self.ecc**2)/(1-self.ecc*np.sin(self.per0))
+        self.rsum = np.average([rsum1, rsum2])
 
 
     def refine_with_ellc(self, phases, fluxes, sigmas):
