@@ -929,7 +929,7 @@ class Body(object):
 
         # TODO: eventually pass etheta to has_standard_mesh
         # TODO: implement reprojection as an option based on a nearby standard?
-        if self.needs_remesh or not self.has_standard_mesh():
+        if self.needs_remesh or not self.has_standard_mesh() or 'ntriangles' in kwargs.keys():
             logger.debug("{}.update_position: remeshing at t={}".format(self.component, time))
             # track whether we did the remesh or not, so we know if we should
             # compute local quantities if not otherwise necessary
@@ -939,7 +939,7 @@ class Body(object):
             # d = _value(ds[self.ind_self])
             # F = _value(Fs[self.ind_self])
 
-            new_mesh_dict, scale = self._build_mesh(mesh_method=self.mesh_method)
+            new_mesh_dict, scale = self._build_mesh(mesh_method=self.mesh_method, **kwargs)
             if self.mesh_method != 'wd':
                 new_mesh_dict = self._offset_mesh(new_mesh_dict)
 
@@ -1113,6 +1113,7 @@ class Star(Body):
         self.irrad_frac_refl = irrad_frac_refl
         self.mesh_method = mesh_method
         self.ntriangles = kwargs.get('ntriangles', 1000)                    # Marching
+        self.ntriangles_retry = kwargs.get('ntriangles_retry', True)
         self.distortion_method = kwargs.get('distortion_method', 'roche')   # Marching (WD assumes roche)
         self.gridsize = kwargs.get('gridsize', 90)                          # WD
         self.is_single = is_single
@@ -1224,6 +1225,8 @@ class Star(Body):
                 # was overriden from kwargs
                 ntriangles_override = kwargs.pop('ntriangles', None)
                 kwargs['ntriangles'] = b.get_value(qualifier='ntriangles', component=component, compute=compute, ntriangles=ntriangles_override, **_skip_filter_checks) if compute is not None else 1000
+                ntriangles_retry_override = kwargs.pop('ntriangles_retry', None)
+                kwargs['ntriangles_retry'] = b.get_value(qualifier='ntriangles_retry', compute=compute, ntriangles_retry=ntriangles_retry_override, default=True, **_skip_filter_checks) if compute is not None else True
                 distortion_method_override = kwargs.pop('distortion_method', None)
                 kwargs['distortion_method'] = b.get_value(qualifier='distortion_method', component=component, compute=compute, distortion_method=distortion_method_override, **_skip_filter_checks) if compute is not None else distortion_method_override if distortion_method_override is not None else 'roche'
             elif mesh_method == 'wd':
@@ -2105,7 +2108,7 @@ class Star_roche(Star):
                                                                     volume=False,
                                                                     init_phi=kwargs.get('mesh_init_phi', self.mesh_init_phi))
             except Exception as err:
-                if str(err) == 'There are too many triangles!':
+                if 'There are too many triangles' in str(err):
                     mesh_init_phi_attempts = kwargs.get('mesh_init_phi_attempts', 1) + 1
                     if mesh_init_phi_attempts > 5:
                         raise err
@@ -2114,6 +2117,14 @@ class Star_roche(Star):
                     logger.warning("mesh failed to converge, trying attempt #{} with mesh_init_phi={}".format(mesh_init_phi_attempts, mesh_init_phi))
                     kwargs['mesh_init_phi_attempts'] = mesh_init_phi_attempts
                     kwargs['mesh_init_phi'] = mesh_init_phi
+                    return self._build_mesh(mesh_method, **kwargs)
+                elif 'Projections are failing' in str(err) and self.ntriangles_retry:
+                    mesh_ntriangles_attempts = kwargs.get('mesh_ntriangles_attempts', 1) + 1
+                    if mesh_ntriangles_attempts > 5:
+                        raise err
+                    logger.warning("mesh failed to project with ntriangles={}, trying attempt #{} with ntriangles={}".format(ntriangles, mesh_ntriangles_attempts, int(ntriangles+mesh_ntriangles_attempts*1000)))
+                    kwargs['mesh_ntriangles_attempts'] = mesh_ntriangles_attempts
+                    kwargs['ntriangles'] = int(ntriangles+mesh_ntriangles_attempts*1000)
                     return self._build_mesh(mesh_method, **kwargs)
                 else:
                     raise err
@@ -2211,6 +2222,9 @@ class Star_roche_envelope_half(Star):
         kwargs.setdefault('mesh_method', b.get_value(qualifier='mesh_method', component=envelope, compute=compute, mesh_method=mesh_method_override, **_skip_filter_checks) if compute is not None else 'marching')
         ntriangles_override = kwargs.pop('ntriangles', None)
         kwargs.setdefault('ntriangles', b.get_value(qualifier='ntriangles', component=envelope, compute=compute, ntriangles=ntriangles_override, **_skip_filter_checks) if compute is not None else 1000)
+        ntriangles_retry_override = kwargs.pop('ntriangles_retry', None)
+        kwargs.setdefault('ntriangles_retry', b.get_value(qualifier='ntriangles_retry', compute=compute, ntriangles_retry=ntriangles_retry_override, default=True, **_skip_filter_checks) if compute is not None else True)
+
 
         return super(Star_roche_envelope_half, cls).from_bundle(b, component, compute,
                                                   datasets,
@@ -2293,6 +2307,9 @@ class Star_roche_envelope_half(Star):
 
             delta = _estimate_delta(ntriangles, av['larea'])
 
+            # print("*** roche_envelope_half marching with ntriangles={}, delta={}".format(ntriangles, delta))
+
+
             logger.debug("libphoebe.roche_marching_mesh{}".format(mesh_args))
             try:
                 new_mesh = libphoebe.roche_marching_mesh(*mesh_args,
@@ -2312,7 +2329,7 @@ class Star_roche_envelope_half(Star):
                                                          volume=False,
                                                          init_phi=kwargs.get('mesh_init_phi', self.mesh_init_phi))
             except Exception as err:
-                if str(err) == 'There are too many triangles!':
+                if 'There are too many triangles' in str(err):
                     mesh_init_phi_attempts = kwargs.get('mesh_init_phi_attempts', 1) + 1
                     if mesh_init_phi_attempts > 5:
                         raise err
@@ -2321,6 +2338,14 @@ class Star_roche_envelope_half(Star):
                     logger.warning("mesh failed to converge, trying attempt #{} with mesh_init_phi={}".format(mesh_init_phi_attempts, mesh_init_phi))
                     kwargs['mesh_init_phi_attempts'] = mesh_init_phi_attempts
                     kwargs['mesh_init_phi'] = mesh_init_phi
+                    return self._build_mesh(mesh_method, **kwargs)
+                elif 'Projections are failing' in str(err) and self.ntriangles_retry:
+                    mesh_ntriangles_attempts = kwargs.get('mesh_ntriangles_attempts', 1) + 1
+                    if mesh_ntriangles_attempts > 5:
+                        raise err
+                    logger.warning("mesh failed to project with ntriangles={}, trying attempt #{} with ntriangles={}".format(ntriangles, mesh_ntriangles_attempts, int(ntriangles+mesh_ntriangles_attempts*1000)))
+                    kwargs['mesh_ntriangles_attempts'] = mesh_ntriangles_attempts
+                    kwargs['ntriangles'] = int(ntriangles+mesh_ntriangles_attempts*1000)
                     return self._build_mesh(mesh_method, **kwargs)
                 else:
                     raise err
@@ -2497,7 +2522,7 @@ class Star_rotstar(Star):
                                                                       volume=True,
                                                                       init_phi=kwargs.get('mesh_init_phi', self.mesh_init_phi))
             except Exception as err:
-                if str(err) == 'There are too many triangles!':
+                if 'There are too many triangles' in str(err):
                     mesh_init_phi_attempts = kwargs.get('mesh_init_phi_attempts', 1) + 1
                     if mesh_init_phi_attempts > 5:
                         raise err
@@ -2506,6 +2531,14 @@ class Star_rotstar(Star):
                     logger.warning("mesh failed to converge, trying attempt #{} with mesh_init_phi={}".format(mesh_init_phi_attempts, mesh_init_phi))
                     kwargs['mesh_init_phi_attempts'] = mesh_init_phi_attempts
                     kwargs['mesh_init_phi'] = mesh_init_phi
+                    return self._build_mesh(mesh_method, **kwargs)
+                elif 'Projections are failing' in str(err) and self.ntriangles_retry:
+                    mesh_ntriangles_attempts = kwargs.get('mesh_ntriangles_attempts', 1) + 1
+                    if mesh_ntriangles_attempts > 5:
+                        raise err
+                    logger.warning("mesh failed to project with ntriangles={}, trying attempt #{} with ntriangles={}".format(ntriangles, mesh_ntriangles_attempts, int(ntriangles+mesh_ntriangles_attempts*1000)))
+                    kwargs['mesh_ntriangles_attempts'] = mesh_ntriangles_attempts
+                    kwargs['ntriangles'] = int(ntriangles+mesh_ntriangles_attempts*1000)
                     return self._build_mesh(mesh_method, **kwargs)
                 else:
                     raise err
@@ -2664,7 +2697,7 @@ class Star_sphere(Star):
                                                           volume=True,
                                                           init_phi=kwargs.get('mesh_init_phi', self.mesh_init_phi))
             except Exception as err:
-                if str(err) == 'There are too many triangles!':
+                if 'There are too many triangles' in str(err):
                     mesh_init_phi_attempts = kwargs.get('mesh_init_phi_attempts', 1) + 1
                     if mesh_init_phi_attempts > 5:
                         raise err
@@ -2673,6 +2706,14 @@ class Star_sphere(Star):
                     logger.warning("mesh failed to converge, trying attempt #{} with mesh_init_phi={}".format(mesh_init_phi_attempts, mesh_init_phi))
                     kwargs['mesh_init_phi_attempts'] = mesh_init_phi_attempts
                     kwargs['mesh_init_phi'] = mesh_init_phi
+                    return self._build_mesh(mesh_method, **kwargs)
+                elif 'Projections are failing' in str(err) and self.ntriangles_retry:
+                    mesh_ntriangles_attempts = kwargs.get('mesh_ntriangles_attempts', 1) + 1
+                    if mesh_ntriangles_attempts > 5:
+                        raise err
+                    logger.warning("mesh failed to project with ntriangles={}, trying attempt #{} with ntriangles={}".format(ntriangles, mesh_ntriangles_attempts, int(ntriangles+mesh_ntriangles_attempts*1000)))
+                    kwargs['mesh_ntriangles_attempts'] = mesh_ntriangles_attempts
+                    kwargs['ntriangles'] = int(ntriangles+mesh_ntriangles_attempts*1000)
                     return self._build_mesh(mesh_method, **kwargs)
                 else:
                     raise err
@@ -2954,13 +2995,30 @@ class Envelope(Body):
             # update the position (and build the mesh) of the primary component
             # this will internally call save_as_standard mesh with the mesh
             # of the ENTIRE contact envelope.
+            # print("*** calling halves[0].update_position with kwargs", kwargs)
             self._halves[0].update_position(*args, **kwargs)
 
             # now let's access this saved WHOLE mesh
             mesh_contact = self._halves[0].get_standard_mesh(scaled=False)
 
             # and split it according to the x-position of neck min
-            mesh_primary, mesh_secondary = split_mesh(mesh_contact, self._q, self._pot)
+            try:
+                mesh_primary, mesh_secondary = split_mesh(mesh_contact, self._q, self._pot)
+            except Exception as err:
+                if 'Mesh failed or incomplete' in str(err) and self._halves[0].ntriangles_retry:
+                    mesh_ntriangles_attempts = kwargs.get('mesh_ntriangles_attempts', 1) + 1
+                    if mesh_ntriangles_attempts > 5:
+                        raise err
+                    ntriangles = kwargs.get('ntriangles', self._halves[0].ntriangles)
+                    logger.warning("contact mesh failed to split with ntriangles={}, trying attempt #{} with ntriangles={}".format(ntriangles, mesh_ntriangles_attempts, int(ntriangles+mesh_ntriangles_attempts*1000)))
+                    kwargs['mesh_ntriangles_attempts'] = mesh_ntriangles_attempts
+                    kwargs['ntriangles'] = int(ntriangles+mesh_ntriangles_attempts*1000)
+                    # clear the standard mesh so it is forced to rebuild
+                    self._halves[0]._standard_meshes = {}
+                    self._halves[1]._standard_meshes = {}
+                    return self.update_position(*args, **kwargs)
+                else:
+                    raise err
 
             # now override the standard mesh with just the corresponding halves
             self._halves[0].save_as_standard_mesh(mesh_primary)

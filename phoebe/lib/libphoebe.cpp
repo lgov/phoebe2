@@ -4310,10 +4310,10 @@ static PyObject *roche_marching_mesh(PyObject *self, PyObject *args, PyObject *k
 
   switch(error) {
     case 1:
-      raise_exception("There are too many triangles!");
+      raise_exception("There are too many triangles!  Please submit an issue.");
       return NULL;
     case 2:
-      raise_exception("Projections are failing!");
+      raise_exception("Projections are failing.  Try increasing the number of triangles (ntriangles) and if that does not help, please submit an issue.");
       return NULL;
   }
 

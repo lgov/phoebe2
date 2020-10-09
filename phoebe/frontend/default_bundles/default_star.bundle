@@ -424,8 +424,8 @@ null
 "description": "Source for bolometric limb darkening coefficients (used only for irradiation; 'auto' to interpolate from the applicable table according to the 'atm' parameter, or the name of a specific atmosphere table)",
 "choices": [
 "auto",
-"phoenix",
-"ck2004"
+"ck2004",
+"phoenix"
 ],
 "value": "auto",
 "visible_if": "ld_mode_bol:lookup",
@@ -742,6 +742,18 @@ null
 "Class": "IntParameter"
 },
 {
+"qualifier": "ntriangles_retry",
+"compute": "phoebe01",
+"kind": "phoebe",
+"context": "compute",
+"description": "Whether to retry with increased triangles if mesh fails to build.",
+"value": true,
+"visible_if": "mesh_method:marching",
+"copy_for": false,
+"advanced": true,
+"Class": "BoolParameter"
+},
+{
 "qualifier": "distortion_method",
 "component": "_default",
 "compute": "phoebe01",
@@ -803,10 +815,10 @@ null
 "description": "Atmosphere table",
 "choices": [
 "ck2004",
-"blackbody",
 "extern_planckint",
-"phoenix",
-"extern_atmx"
+"blackbody",
+"extern_atmx",
+"phoenix"
 ],
 "value": "ck2004",
 "copy_for": {
@@ -959,10 +971,10 @@ null
 "description": "Atmosphere table",
 "choices": [
 "ck2004",
-"blackbody",
 "extern_planckint",
-"phoenix",
-"extern_atmx"
+"blackbody",
+"extern_atmx",
+"phoenix"
 ],
 "value": "ck2004",
 "copy_for": false,
@@ -1073,7 +1085,7 @@ null
 "qualifier": "phoebe_version",
 "context": "setting",
 "description": "Version of PHOEBE",
-"value": "devel",
+"value": "2.3.2",
 "copy_for": false,
 "readonly": true,
 "advanced": true,
