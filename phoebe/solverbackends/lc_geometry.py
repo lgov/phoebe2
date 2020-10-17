@@ -378,6 +378,8 @@ class TwoGaussianModel(object):
             ecl2_r = drs[5].point.get_xdata()[0]
             width1 = ecl1_r - ecl1_l
             width2 = ecl2_r - ecl2_l
+            depth1 = C - self.fluxes[np.argmin(np.abs(self.phases-pos1))]
+            depth2 = C - self.fluxes[np.argmin(np.abs(self.phases-pos2))]
             
             eclipse_edges = [ecl1_l, ecl1_r, ecl2_l, ecl2_r]
 
