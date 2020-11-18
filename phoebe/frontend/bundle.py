@@ -1282,7 +1282,7 @@ class Bundle(ParameterSet):
         # TODO: does this constraint need to be rebuilt when things change?
         # (ie in set_hierarchy)
 
-        b.add_compute(dynamics_method='nbody')
+        b.add_compute(dynamics_method='nbody', ltte=True)
         return b
 
     @classmethod
@@ -1381,7 +1381,7 @@ class Bundle(ParameterSet):
         # TODO: set hierarchical constraints
         raise NotImplementedError('double-double hierarchical constraints not yet implemented')
 
-        b.add_compute(dynamics_method='nbody')
+        b.add_compute(dynamics_method='nbody', ltte=True)
         return b
 
     @classmethod
