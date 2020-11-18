@@ -4033,7 +4033,7 @@ class Bundle(ParameterSet):
                                      ]+addl_parameters,
                                      True, 'run_compute')
             elif len(self.hierarchy.get_stars()) > 2:
-                if compute_kind not in []:
+                if compute_kind not in ['phoebe', 'photodynam']:
                     report.add_item(self,
                                     "{} (compute='{}') does not support multiple systems".format(compute_kind, compute),
                                     [self.hierarchy

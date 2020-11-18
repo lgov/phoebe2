@@ -285,10 +285,6 @@ def legacy(**kwargs):
 
 def photodynam(**kwargs):
     """
-    **This backend is EXPERIMENTAL and requires developer mode to be enabled**
-
-    **DO NOT USE FOR SCIENCE**
-
     Create a <phoebe.parameters.ParameterSet> for compute options for Josh
     Carter's [photodynam](http://github.com/phoebe-project/photodynam) code.
 
@@ -381,9 +377,6 @@ def photodynam(**kwargs):
     * (<phoebe.parameters.ParameterSet>): ParameterSet of all newly created
         <phoebe.parameters.Parameter> objects.
     """
-    if not conf.devel:
-        raise NotImplementedError("'photodynam' backend not officially supported for this release.  Enable developer mode to test.")
-
     params = _sampling_params(**kwargs)
     params += _comments_params(**kwargs)
 
