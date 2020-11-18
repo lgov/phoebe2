@@ -935,7 +935,7 @@ class PhoebeBackend(BaseBackendByTime):
             elif dynamics_method=='keplerian':
                 # TODO: make sure that this takes systemic velocity and corrects positions and velocities (including ltte effects if enabled)
                 ts, corrected_ts, xs, ys, zs, vxs, vys, vzs, ethetas, elongans, eincls = dynamics.keplerian.dynamics_from_bundle(b, times, compute, return_euler=True, **kwargs)
-
+                inst_ds, inst_Fs = None, None
             else:
                 raise NotImplementedError
 
@@ -950,6 +950,7 @@ class PhoebeBackend(BaseBackendByTime):
             vxs, vys, vzs = [np.zeros(len(times))], [np.zeros(len(times))], [np.zeros(len(times))]
             xs, ys, zs = [np.zeros(len(times))], [np.zeros(len(times))], [np.full(len(times), vgamma)]
             ethetas, elongans, eincls = [np.zeros(len(times))], [np.full(len(times), long_an)], [np.full(len(times), incl)]
+            inst_ds, inst_Fs = None, None
 
             for i,t in enumerate(times):
                 zs[0][i] = vgamma*(t-t0)
@@ -961,7 +962,8 @@ class PhoebeBackend(BaseBackendByTime):
                     dynamics_method=dynamics_method,
                     ts=ts, xs=xs, ys=ys, zs=zs,
                     vxs=vxs, vys=vys, vzs=vzs,
-                    ethetas=ethetas, elongans=elongans, eincls=eincls)
+                    ethetas=ethetas, elongans=elongans, eincls=eincls,
+                    inst_ds=inst_ds, inst_Fs=inst_Fs)
 
     def _run_single_time(self, b, i, time, infolist, **kwargs):
         logger.debug("rank:{}/{} PhoebeBackend._run_single_time(i={}, time={}, infolist={}, **kwargs.keys={})".format(mpi.myrank, mpi.nprocs, i, time, infolist, kwargs.keys()))
@@ -981,6 +983,8 @@ class PhoebeBackend(BaseBackendByTime):
         ethetas = kwargs.get('ethetas')
         elongans = kwargs.get('elongans')
         eincls = kwargs.get('eincls')
+        inst_ds = kwargs.get('inst_ds')
+        inst_Fs = kwargs.get('inst_Fs')
 
         # Check to see what we might need to do that requires a mesh
         # TODO: make sure to use the requested distortion_method
