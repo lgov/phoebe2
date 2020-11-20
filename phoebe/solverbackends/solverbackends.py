@@ -1373,7 +1373,7 @@ class EmceeBackend(BaseSolverBackend):
             sargs = {}
             sargs['iterations'] = niters
             sargs['progress'] = kwargs.get('progressbar', False)
-            sargs['skip_initial_state_check'] = False
+            sargs['skip_initial_state_check'] = kwargs.get('skip_initial_state_check', False)
 
 
             logger.debug("sampler.sample(p0, {})".format(sargs))

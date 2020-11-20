@@ -264,6 +264,7 @@ _forbidden_labels += ['nwalkers', 'niters', 'priors', 'init_from',
                       'xatol', 'fatol', 'bounds', 'bounds_combine', 'bounds_sigma',
                       'strategy', 'popsize', 'continue_from', 'init_from_combine',
                       'burnin_factor', 'thin_factor', 'progress_every_niters',
+                      'skip_initial_state_check',
                       'nlive', 'maxcall', 'lc_geometry', 'rv_geometry', 'lc_periodogram', 'rv_periodogram', 'ebai',
                       'nelder_mead', 'differential_evolution', 'cg', 'powell', 'emcee', 'dynesty']
 

@@ -137,6 +137,8 @@ def emcee(**kwargs):
 
     params += [BoolParameter(visible_if='continue_from:None', qualifier='expose_failed', value=kwargs.get('expose_failed', True), description='whether to expose dictionary of failed samples and their error messages.  Note: depending on the number of failed samples, this could add overhead.')]
 
+    params += [BoolParameter(qualifier='skip_initial_state_check', value=kwargs.get('skip_initial_state_check', False), advanced=True, description='Passed directly to emcee: If True, a check that the initial_state can fully explore the space will be skipped.')]
+
     return ParameterSet(params)
 
 def dynesty(**kwargs):
