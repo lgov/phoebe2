@@ -131,13 +131,13 @@ def _expand_mesh_times(b, dataset_ps, component):
                 # (times@rv@primary and times@rv@secondary are not necessarily
                 # identical)
                 add_times = np.unique(np.append(*[add_ps.get_value(qualifier='compute_times', component=c) for c in add_ps_components]))
-                if not len(add_times):
+                if not len(add_times) and add_timequalifier in add_ps.qualifiers:
                     add_times = np.unique(np.append(*[add_ps.get_value(qualifier=add_timequalifier, component=c) for c in add_ps_components]))
             else:
                 # then we're adding from some dataset at the system-level (like lcs)
                 # that have component=None
                 add_times = add_ps.get_value(qualifier='compute_times', component=None, unit=u.d)
-                if not len(add_times):
+                if not len(add_times) and add_timequalifier in add_ps.qualifiers:
                     add_times = add_ps.get_value(qualifier=add_timequalifier, component=None, unit=u.d)
         else:
             # then some sort of t0 from context='component' or 'system'
@@ -240,7 +240,7 @@ def _extract_from_bundle(b, compute, dataset=None, times=None,
                 # print "*****", dataset_kind, dataset_ps.kinds, timequalifier, timecomponent
                 # NOTE: compute_times is not component-dependent, but times can be (i.e. for RV datasets)
                 this_times = dataset_ps.get_value(qualifier='compute_times', unit=u.d, **_skip_filter_checks)
-                if not len(this_times):
+                if not len(this_times) and timequalifier in dataset_ps.qualifiers:
                     this_times = dataset_ps.get_value(qualifier=timequalifier, component=timecomponent, unit=u.d, **_skip_filter_checks)
 
                 # we may also need to compute at other times if requested by a
