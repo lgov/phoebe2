@@ -83,6 +83,28 @@ To understand how to use PHOEBE, please consult the [tutorials, scripts and manu
 
 CHANGELOG
 ----------
+
+### 2.3.11 - continue_from run_checks fix
+
+* fix bug where run_checks raised an error for an empty init_from if continue_from was set.
+
+### 2.3.10 - alternate backend atm fix
+
+* fix bug where atm parameter was ignored during passband luminosity scaling while using an alternate backend, resulting in an atmosphere out-of-bounds error in some situations.
+
+### 2.3.9 - online passbands fix
+
+* stop attempting to query online passbands after three failed attempts to avoid significant time cost otherwise.
+
+### 2.3.8 - plotting exclusion fix
+
+* fix bug where datasets were excluded from plotting if not in any models
+* fix syntax error in run_checks
+
+### 2.3.7 - kwargs errors fix
+
+* fix small bugs that could raise errors when passing some filter kwargs to `run_solver` or `sample_distribution_collection`
+
 ### 2.3.6 - GP run_checks fix
 
 * fix check for presence of observational data during run_checks to only consider datasets with attached gaussian processes (GPs)
