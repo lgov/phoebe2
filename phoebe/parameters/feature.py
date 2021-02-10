@@ -161,6 +161,12 @@ def pulsation(feature, **kwargs):
 
     Arguments
     ----------
+    * `radamp` (float, optional, default=0.1): Relative radial amplitude of the pulsations
+    * `freq` (float, optional, default=1.0): Frequency of the pulsations
+    * `phase` (float, optional, default=0.0): Phase of pulsations at time t0@system
+    * `l` (int, optional, default=0): Non-radial degree l
+    * `m` (int, optional, default=0): Azimuthal order m
+    * `teffext` (bool, optional, default=False): Switch to denote whether Teffs are provided by the external code
 
 
 
@@ -174,7 +180,7 @@ def pulsation(feature, **kwargs):
 
     params += [FloatParameter(qualifier='radamp', value=kwargs.get('radamp', 0.1), default_unit=u.dimensionless_unscaled, description='Relative radial amplitude of the pulsations')]
     params += [FloatParameter(qualifier='freq', value=kwargs.get('freq', 1.0), default_unit=u.d**-1, description='Frequency of the pulsations')]
-    params += [FloatParameter(qualifier='phase', value=kwargs.get('phase', 0.0), default_unit=u.dimensionless_unscaled, description='Phase of pulsations at time 0')]
+    params += [FloatParameter(qualifier='phase', value=kwargs.get('phase', 0.0), default_unit=u.dimensionless_unscaled, description='Phase of pulsations at time t0@system')]
     params += [IntParameter(qualifier='l', value=kwargs.get('l', 0), default_unit=u.dimensionless_unscaled, description='Non-radial degree l')]
     params += [IntParameter(qualifier='m', value=kwargs.get('m', 0), default_unit=u.dimensionless_unscaled, description='Azimuthal order m')]
     params += [BoolParameter(qualifier='teffext', value=kwargs.get('teffext', False), description='Switch to denote whether Teffs are provided by the external code')]
@@ -183,7 +189,7 @@ def pulsation(feature, **kwargs):
     constraints = []
 
     return ParameterSet(params), constraints
-    
+
 # del deepcopy
 # del _component_allowed_for_feature
 # del download_passband, list_installed_passbands, list_online_passbands, list_passbands, parameter_from_json, parse_json, send_if_client, update_if_client
