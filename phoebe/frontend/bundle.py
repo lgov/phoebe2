@@ -593,8 +593,8 @@ class Bundle(ParameterSet):
         b = cls(data)
 
         version = b.get_value(qualifier='phoebe_version', check_default=False, check_visible=False)
-        phoebe_version_import = StrictVersion(version if version != 'devel' else '2.3.0')
-        phoebe_version_this = StrictVersion(__version__ if __version__ != 'devel' else '2.3.0')
+        phoebe_version_import = StrictVersion(version if version != 'devel' else '2.4.0')
+        phoebe_version_this = StrictVersion(__version__ if __version__ != 'devel' else '2.4.0')
 
         logger.debug("importing from PHOEBE v {} into v {}".format(phoebe_version_import, phoebe_version_this))
 
@@ -1598,6 +1598,91 @@ class Bundle(ParameterSet):
 
         #return io.pass_to_legacy(self, filename, compute=compute)
 
+    def export_mesh(self, filename, format=None, coordinates='uvw', model=None, dataset=None, component=None, time=None):
+        """
+        Export a mesh (or multiple meshes) from a model to a supported 3D object
+        format.  Note that these includes no color information.
+
+        All meshes (in the `model` context) matching the filter will be exported.
+
+        Arguments
+        -------------
+        * `filename` (string): filename of the output file (will overwrite if
+            already exists)
+        * `format` (string, optional, default=None): format to use.  Supports
+            'obj' and 'stl'.  If not provided or none, will default based on
+            extension of `filename` or raise a ValueError.  `numpy-stl` package
+            required for `format='stl'`.
+        * `coordinates` (string, optional, default='uvw'): whether to export
+            using 'uvw' or 'xyz' coordinates.  Only meshes that have the chosen
+            coordinate system exposed will be included in the filter (via
+            qualifier='uvw_elements' or 'xyz_elements').  See the `coordinates`
+            parameter in the mesh dataset to choose which are exposed when calling
+            <phoebe.frontend.bundle.Bundle.run_compute>.
+        * `model` (string, optional, default=None): model to use when filtering
+            for meshes.
+        * `dataset` (string, optional, default=None): dataset to use when filtering
+            for meshes.
+        * `component` (string, optional, default=None): component to use when
+            filtering for meshes.
+        * `time` (string/float, optional, default=None): time to use when filtering
+            for meshes.
+
+        Returns
+        -----------
+        * (string) `filename`
+        """
+
+        if format is None:
+            format = filename.split('.')[-1]
+
+        if coordinates == 'uvw':
+            qualifier = 'uvw_elements'
+        elif coordinates == 'xyz':
+            qualifier = 'xyz_elements'
+        else:
+            raise ValueError("coordinates must be uvw (plane-of-sky) or xzy (roche)")
+
+        elements_params = self.filter(qualifier=qualifier,
+                                      dataset=dataset,
+                                      time=time,
+                                      model=model,
+                                      component=component,
+                                      context='model',
+                                      **_skip_filter_checks)
+
+        if format == 'obj':
+            f = open(filename, 'w')
+            f.write("# OBJ file created by PHOEBE\n\n")
+
+            t = 0
+            for element_param in elements_params.to_list():
+                for triangle in element_param.get_value():
+                    # TODO: optimize this by not repeating vertices btwn triangles?
+                    for vertex in triangle:
+                        f.write("v {} {} {} 0.5 0.3 0.8\n".format(*vertex))
+                    f.write("f {} {} {}\n".format(3*t+1, 3*t+2, 3*t+3))
+                    t+=1
+
+            f.close()
+        elif format == 'stl':
+            try:
+                from stl import mesh as _stl_mesh
+            except ImportError:
+                raise ImportError("install numpy-stl package to export to stl format")
+
+            # stl implementation adapted from Michael Abdul-Masih
+            faces = np.concatenate([element_param.get_value() for element_param in elements_params.to_list()])
+
+            cube = _stl_mesh.Mesh(np.zeros(faces.shape[0], dtype=_stl_mesh.Mesh.dtype))
+            cube.vectors = faces
+
+            cube.save(filename)
+
+        else:
+            raise ValueError("format of {} not implemented.  Must be one obj or stl.")
+
+        return filename
 
     def _test_server(self, server='http://localhost:5555', wait_for_server=False):
         """
@@ -9119,7 +9204,7 @@ class Bundle(ParameterSet):
             # as phoebe may not support all the same distortion_methods for these backends
             kwargs.setdefault('distortion_method', 'roche')
 
-            atm_backend = {component: self.get_value(qualifier='atm', component=component, compute=compute, atm=kwargs.get('atm', None), default='ck2004', **_skip_filter_checks) for component in self.hierarchy.get_stars()}
+            atm_backend = {component: self.get_value(qualifier='atm', component=component, compute=compute, atm=kwargs.get('atm', kwargs.get('atms', {}).get(component, None)), default='ck2004', **_skip_filter_checks) for component in self.hierarchy.get_stars()}
             kwargs.setdefault('atm', atm_backend)
 
         # temporarily disable interactive_checks, check_default, and check_visible
@@ -9443,6 +9528,17 @@ class Bundle(ParameterSet):
                     # even though it isn't requested to be returned
                     pblum_datasets.append(ref_dataset)
 
+        atms = {}
+        # note here that we aren't including the envelopes as they don't have atm parameters
+        for component in self.hierarchy.get_stars():
+            atm = compute_ps.get_value(qualifier='atm', component=component, atm=kwargs.get('atm', None), **_skip_filter_checks)
+            if atm == 'extern_planckint':
+                atm = 'blackbody'
+            elif atm == 'extern_atmx':
+                atm = 'ck2004'
+
+            atms[component] = atm
+
         # preparation depending on method before looping over datasets/components
         if pblum_method == 'phoebe':
             # we'll need to make sure we've done any necessary interpolation if
@@ -9450,7 +9546,7 @@ class Bundle(ParameterSet):
             if not kwargs.get('skip_compute_ld_coeffs', False):
                 self.compute_ld_coeffs(compute=compute, set_value=True, skip_checks=True, **{k:v for k,v in kwargs.items() if k not in ['ret_structured_dicts', 'pblum_mode', 'pblum_method', 'skip_checks']})
             # TODO: make sure this accepts all compute parameter overrides (distortion_method, etc)
-            system = kwargs.get('system', self._compute_intrinsic_system_at_t0(compute=compute, datasets=pblum_datasets, **kwargs))
+            system = kwargs.get('system', self._compute_intrinsic_system_at_t0(compute=compute, datasets=pblum_datasets, atms=atms, **kwargs))
             logger.debug("computing observables with ignore_effects=True for {}".format(pblum_datasets))
             system.populate_observables(t0, ['lc'], pblum_datasets, ignore_effects=True)
         elif pblum_method == 'stefan-boltzmann':
@@ -9458,16 +9554,6 @@ class Bundle(ParameterSet):
             teffs = {component: self.get_value(qualifier='teff', component=component, context='component', unit='K', **_skip_filter_checks) for component in valid_components}
             loggs = {component: self.get_value(qualifier='logg', component=component, context='component', **_skip_filter_checks) for component in valid_components}
             abuns = {component: self.get_value(qualifier='abun', component=component, context='component', **_skip_filter_checks) for component in valid_components}
-
-            atms = {}
-            for component in valid_components:
-                atm = compute_ps.get_value(qualifier='atm', component=component, atm=kwargs.get('atm', None), **_skip_filter_checks)
-                if atm == 'extern_planckint':
-                    atm = 'blackbody'
-                elif atm == 'extern_atmx':
-                    atm = 'ck2004'
-
-                atms[component] = atm
 
             system = None
 
@@ -10059,6 +10145,7 @@ class Bundle(ParameterSet):
             f.write("b.filter(context='model', model=model_ps.model, check_visible=False).save(sys.argv[0]+'.out', incl_uniqueid=True)\n")
             out_fname = script_fname+'.out'
 
+        f.write("\n# NOTE: this script only includes parameters needed to call the requested run_compute, edit manually with caution!\n")
         f.close()
 
         return script_fname, out_fname
@@ -10530,10 +10617,21 @@ class Bundle(ParameterSet):
                                 ml_params.set_value(qualifier='times', dataset=ds, value=times_ds, ignore_readonly=True, **_skip_filter_checks)
                                 ml_params.set_value(qualifier='fluxes', dataset=ds, value=fluxes, ignore_readonly=True, **_skip_filter_checks)
 
+                # handle scaling to absolute fluxes as necessary for alternate backends
+                # NOTE: this must happen BEFORE dataset-scaling as that scaling assumes absolute fluxes
+                for flux_param in ml_params.filter(qualifier='fluxes', kind='lc', **_skip_filter_checks).to_list():
+                    fluxes = flux_param.get_value(unit=u.W/u.m**2)
+                    if computeparams.kind not in ['phoebe', 'legacy']:
+                        # then we need to scale the "normalized" fluxes to pbflux first
+                        fluxes *= pbfluxes.get(flux_param.dataset)
+                        # otherwise fluxes are already correctly scaled by passing
+                        # relative pblums or pblums_scale to the respective backend
+
+                        flux_param.set_value(fluxes, ignore_readonly=True)
+
                 # handle flux scaling for any pblum_mode == 'dataset-scaled'
                 # or for any dataset in which pblum_mode == 'dataset-coupled' and pblum_dataset points to a 'dataset-scaled' dataset
                 datasets_dsscaled = []
-
                 coupled_datasets = self.filter(qualifier='pblum_mode', dataset=ml_params.datasets, value='dataset-coupled', **_skip_filter_checks).datasets
                 for pblum_mode_param in self.filter(qualifier='pblum_mode', dataset=ml_params.datasets, value='dataset-scaled', **_skip_filter_checks).to_list():
                     this_dsscale_datasets = [pblum_mode_param.dataset] + self.filter(qualifier='pblum_dataset', dataset=coupled_datasets, value=pblum_mode_param.dataset, **_skip_filter_checks).datasets
@@ -10588,7 +10686,6 @@ class Bundle(ParameterSet):
                         # use values in this namespace rather than passing directly
                         return _scale_fluxes(fluxes, scale_factor, l3_fracs, l3_pblum_abs_sums, l3_fluxes)
 
-                    # TODO: can we skip this if sigmas don't exist?
                     logger.debug("calling curve_fit with estimated scale_factor={}".format(scale_factor_approx))
                     popt, pcov = cfit(_scale_fluxes_cfit, model_fluxess_interp, ds_fluxess, p0=(scale_factor_approx), sigma=ds_sigmass)
                     scale_factor = popt[0]
@@ -10613,25 +10710,15 @@ class Bundle(ParameterSet):
 
                         flux_param.set_value(qualifier='fluxes', value=syn_fluxes, ignore_readonly=True)
 
-                        # scale_factor is currently the factor between the native backend fluxes
-                        # and those scaled to the dataset.  For backends to natively give absolute
-                        # fluxes, this can then be applied to luminosities.  But for those that
-                        # do not give absolute fluxes, we need to estimate that as well (in other
-                        # words estimate the scaling factor between absolute and the backend as well)
-                        if computeparams.kind in ['ellc', 'jktebop']:
-                            logger.info("estimating absolute flux for compute='{}', dataset='{}' to apply to flux_scale".format(computeparams.compute, flux_param.dataset))
-                            system, pblums_abs, pblums_scale, pblums_rel, pbfluxes = self.compute_pblums(compute=computeparams.compute, dataset=flux_param.dataset, pblum_abs=True, ret_structured_dicts=True, skip_checks=True, **kwargs)
-                            pbflux_abs_est = np.sum(np.asarray(list(pblums_abs.get(flux_param.dataset).values()))/(4*np.pi))
-                            scale_factor /= pbflux_abs_est
-
                         ml_addl_params += [FloatParameter(qualifier='flux_scale', dataset=dataset, value=scale_factor, readonly=True, default_unit=u.dimensionless_unscaled, description='scaling applied to fluxes (intensities/luminosities) due to dataset-scaling')]
 
                         for mesh_param in ml_params.filter(kind='mesh', **_skip_filter_checks).to_list():
-                            if param.qualifier in ['intensities', 'abs_intensities', 'normal_intensities', 'abs_normal_intensities', 'pblum_ext']:
+                            if mesh_param.qualifier in ['intensities', 'abs_intensities', 'normal_intensities', 'abs_normal_intensities', 'pblum_ext']:
                                 logger.debug("applying scale_factor={} to {} parameter in mesh".format(scale_factor, mesh_param.qualifier))
                                 mesh_param.set_value(mesh_param.get_value()*scale_factor, ignore_readonly=True)
 
-                # handle flux scaling based on pbflux, distance, l3
+                # handle flux scaling based on distance and l3
+                # NOTE: this must happen AFTER dataset scaling
                 distance = self.get_value(qualifier='distance', context='system', unit=u.m, **_skip_filter_checks)
                 for flux_param in ml_params.filter(qualifier='fluxes', kind='lc', **_skip_filter_checks).to_list():
                     dataset = flux_param.dataset
@@ -10641,12 +10728,6 @@ class Bundle(ParameterSet):
                         continue
 
                     fluxes = flux_param.get_value(unit=u.W/u.m**2)
-                    if computeparams.kind not in ['phoebe', 'legacy']:
-                        # then we need to scale the "normalized" fluxes to pbflux first
-                        fluxes *= pbfluxes.get(dataset)
-                    # otherwise fluxes are already correctly scaled by passing
-                    # relative pblums or pblums_scale to the respective backend
-
                     fluxes = fluxes/distance**2 + l3s.get(dataset)
 
                     flux_param.set_value(fluxes, ignore_readonly=True)
@@ -11359,6 +11440,7 @@ class Bundle(ParameterSet):
             f.write("b.filter(context='solution', solution=solution_ps.solution, check_visible=False).save(sys.argv[0]+'.out', incl_uniqueid=True)\n")
             out_fname = script_fname+'.out'
 
+        f.write("\n# NOTE: this script only includes parameters needed to call the requested run_solver, edit manually with caution!\n")
         f.close()
 
         return script_fname, out_fname
@@ -11882,7 +11964,7 @@ class Bundle(ParameterSet):
     def _get_adopt_inds_uniqueids(self, solution_ps, **kwargs):
 
         adopt_parameters = solution_ps.get_value(qualifier='adopt_parameters', adopt_parameters=kwargs.get('adopt_parameters', kwargs.get('parameters', None)), expand=True, **_skip_filter_checks)
-        fitted_uniqueids = solution_ps.get_value(qualifier='fitted_uniqueids', **_skip_filter_checks)
+        fitted_uniqueids = solution_ps.get_value(qualifier='fitted_uniqueids', **_skip_filter_checks).tolist()
         fitted_twigs = solution_ps.get_value(qualifier='fitted_twigs', **_skip_filter_checks)
 
         b_uniqueids = self.uniqueids
@@ -11893,6 +11975,7 @@ class Bundle(ParameterSet):
         else:
             logger.warning("not all uniqueids in fitted_uniqueids@{}@solution are still valid.  Falling back on twigs.  Save and load same bundle to prevent this extra cost.".format(solution_ps.solution))
             fitted_ps = adoptable_ps.filter(twig=fitted_twigs.tolist(), **_skip_filter_checks)
+            fitted_uniqueids = [fitted_ps.get_parameter(twig=fitted_twig, **_skip_filter_checks).uniqueid for fitted_twig in fitted_twigs]
 
         adopt_uniqueids = []
         for adopt_twig in adopt_parameters:
@@ -11902,7 +11985,7 @@ class Bundle(ParameterSet):
             elif len(fitted_ps_filtered) > 1:
                 raise ValueError("multiple valid matches found for adopt_parameter='{}'".format(adopt_twig))
 
-        adopt_inds = [fitted_uniqueids.tolist().index(uniqueid) for uniqueid in adopt_uniqueids]
+        adopt_inds = [fitted_uniqueids.index(uniqueid) for uniqueid in adopt_uniqueids]
 
         return adopt_inds, adopt_uniqueids
 
