@@ -3168,8 +3168,10 @@ class Spot(Feature):
         return teffs
 
 class Pulsation(Feature):
-    def __init__(self, radamp, freq, l=0, m=0, tanamp=0.0, teffext=False, **kwargs):
+    def __init__(self, radamp, freq, t0, phase=0, l=0, m=0, tanamp=0.0, teffext=False, **kwargs):
         self._freq = freq
+        self._t0 = t0
+        self._phase = phase
         self._radamp = radamp
         self._l = l
         self._m = m
@@ -3185,6 +3187,8 @@ class Pulsation(Feature):
 
         feature_ps = b.get_feature(feature=feature, **_skip_filter_checks)
         freq = feature_ps.get_value(qualifier='freq', unit=u.d**-1, **_skip_filter_checks)
+        t0 = b.get_value(qualifier='t0', context='system', unit=u.d, **_skip_filter_checks)
+        phase = feature_ps.get_value(qualifier='phase', unit=u.dimensionless_unscaled, **_skip_filter_checks)
         radamp = feature_ps.get_value(qualifier='radamp', unit=u.dimensionless_unscaled, **_skip_filter_checks)
         l = feature_ps.get_value(qualifier='l', unit=u.dimensionless_unscaled, **_skip_filter_checks)
         m = feature_ps.get_value(qualifier='m', unit=u.dimensionless_unscaled, **_skip_filter_checks)
@@ -3193,10 +3197,10 @@ class Pulsation(Feature):
         GM = c.G.to('solRad3 / (solMass d2)').value*b.get_value(qualifier='mass', component=feature_ps.component, context='component', unit=u.solMass, **_skip_filter_checks)
         R = b.get_value(qualifier='requiv', component=feature_ps.component, section='component', unit=u.solRad, **_skip_filter_checks)
 
-        # cowling assumption
+        # Cowling assumption
         tanamp = GM/R**3/freq**2
 
-        return cls(radamp, freq, l, m, tanamp, teffext)
+        return cls(radamp, freq, t0, phase, l, m, tanamp, teffext)
 
     @property
     def proto_coords(self):
@@ -3228,11 +3232,12 @@ class Pulsation(Feature):
         x, y, z, r = coords_for_computations[:,0], coords_for_computations[:,1], coords_for_computations[:,2], np.sqrt((coords_for_computations**2).sum(axis=1))
         theta = np.arccos(z/r)
         phi = np.arctan2(y, x)
+        phase = 2*np.pi*self._freq*(t-self._t0)+self._phase
 
-        xi_r = self._radamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_r(self._l, self._m, theta, phi, 2*np.pi*self._freq*t)
+        xi_r = self._radamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_r(self._l, self._m, theta, phi, phase)
         if self._l > 0:
-            xi_t = self._tanamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_theta(self._l, self._m, theta, phi, 2*np.pi*self._freq*t)
-            xi_p = self._tanamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_phi(self._l, self._m, theta, phi, 2*np.pi*self._freq*t)
+            xi_t = self._tanamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_theta(self._l, self._m, theta, phi, phase)
+            xi_p = self._tanamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_phi(self._l, self._m, theta, phi, phase)
         else:
             xi_t = np.zeros_like(theta)
             xi_p = np.zeros_like(phi)
@@ -3270,16 +3275,18 @@ class Pulsation(Feature):
         x, y, z, r = coords_for_observations[:,0], coords_for_observations[:,1], coords_for_observations[:,2], np.sqrt((coords_for_observations**2).sum(axis=1))
         theta = np.arccos(z/r)
         phi = np.arctan2(y, x)
+        phase = 2*np.pi*self._freq*(t-self._t0)+self._phase
+
         # print(x, y, z, r, theta, phi)
 
         #~ xi_r = self._radamp * Y(self._m, self._l, theta, phi) * np.exp(-1j*2*np.pi*self._freq*t)
         #~ xi_t = self._tanamp * self.dYdtheta(self._m, self._l, theta, phi) * np.exp(-1j*2*np.pi*self._freq*t)
         #~ xi_p = self._tanamp/np.sin(theta) * self.dYdphi(self._m, self._l, theta, phi) * np.exp(-1j*2*np.pi*self._freq*t)
 
-        xi_r = self._radamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_r(self._l, self._m, theta, phi, 2*np.pi*self._freq*t)
+        xi_r = self._radamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_r(self._l, self._m, theta, phi, phase)
         if self._l > 0:
-            xi_t = self._tanamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_theta(self._l, self._m, theta, phi, 2*np.pi*self._freq*t)
-            xi_p = self._tanamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_phi(self._l, self._m, theta, phi, 2*np.pi*self._freq*t)
+            xi_t = self._tanamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_theta(self._l, self._m, theta, phi, phase)
+            xi_p = self._tanamp * np.sqrt(4.*np.pi) * asteroseismo.as_xi_phi(self._l, self._m, theta, phi, phase)
         else:
             xi_t = np.zeros_like(theta)
             xi_p = np.zeros_like(phi)
