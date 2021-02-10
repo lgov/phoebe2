@@ -19,6 +19,7 @@ def test_forbidden(verbose=False):
     b.add_compute('ellc')
 
     b.add_spot(component='primary')
+    b.add_pulsation(component='primary')
     b.add_gaussian_process(dataset='lc01')
 
     b.add_solver('estimator.lc_periodogram')
