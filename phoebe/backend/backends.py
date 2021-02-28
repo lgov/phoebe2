@@ -2633,7 +2633,7 @@ class EllcBackend(BaseBackendByDataset):
             #     # TODO: may just be that we need to estimate and pass vsini
             #     raise NotImplementedError("flux-weighted does not seem to work in ellc")
             if flux_weighted and (heat_1 is not None or heat_2 is not None):
-                raise NotImplementedError("ellc cannot compute flux-weighted RVs with irradiation")
+                logger.warning("Ignoring irradiation for flux-weighted RVs in ellc")
 
             if flux_weighted and period_anom == 1.0: # add VersionCheck once bug fixed (https://github.com/pmaxted/ellc/issues/4)
                 logger.warning("ellc does not allow period=1.0 with flux_weighted RVs (see  https://github.com/pmaxted/ellc/issues/4).  Overriding period to 1.0+1e-6 for {}@{}".format(info['component'], info['dataset']))
@@ -2665,7 +2665,7 @@ class EllcBackend(BaseBackendByDataset):
                              rotfac_1=rotfac_1, rotfac_2=rotfac_2,
                              hf_1=hf_1, hf_2=hf_2,
                              bfac_1=None, bfac_2=None,
-                             heat_1=heat_1, heat_2=heat_2,
+                             heat_1=None, heat_2=None,
                              lambda_1=lambda_1, lambda_2=lambda_2,
                              vsini_1=vsini_1.value, vsini_2=vsini_2.value,
                              t_exp=t_exp, n_int=n_int,

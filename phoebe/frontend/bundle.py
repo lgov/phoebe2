@@ -3919,31 +3919,31 @@ class Bundle(ParameterSet):
 
             # ellc-specific checks
             if compute_kind == 'ellc':
-                irrad_method = self.get_value(qualifier='irrad_method', compute=compute, context='compute', **_skip_filter_checks)
-                rv_datasets = self.filter(kind='rv', context='dataset', **_skip_filter_checks).datasets
-                rv_datasets_enabled = self.filter(qualifier='enabled', dataset=rv_datasets, compute=compute, context='compute', value=True, **_skip_filter_checks).datasets
-                if irrad_method != 'none' and len(rv_datasets_enabled):
-                    # then we can't allow albedos with flux-weighted RVs
-                    offending_components = []
-                    offending_datasets = []
-                    for dataset in rv_datasets_enabled:
-                        for component in hier_stars:
-                            rv_method = self.get_value(qualifier='rv_method', compute=compute, component=component, dataset=dataset, context='compute', **_skip_filter_checks)
-                            if rv_method != 'dynamical' and self.get_value(qualifier='irrad_frac_refl_bol', component=component, context='component', **_skip_filter_checks) > 0:
-                                if component not in offending_components:
-                                    offending_components.append(component)
-                                if dataset not in offending_datasets:
-                                    offending_datasets.append(dataset)
+                # irrad_method = self.get_value(qualifier='irrad_method', compute=compute, context='compute', **_skip_filter_checks)
+                # rv_datasets = self.filter(kind='rv', context='dataset', **_skip_filter_checks).datasets
+                # rv_datasets_enabled = self.filter(qualifier='enabled', dataset=rv_datasets, compute=compute, context='compute', value=True, **_skip_filter_checks).datasets
+                # if irrad_method != 'none' and len(rv_datasets_enabled):
+                #     # then we can't allow albedos with flux-weighted RVs
+                #     offending_components = []
+                #     offending_datasets = []
+                #     for dataset in rv_datasets_enabled:
+                #         for component in hier_stars:
+                #             rv_method = self.get_value(qualifier='rv_method', compute=compute, component=component, dataset=dataset, context='compute', **_skip_filter_checks)
+                #             if rv_method != 'dynamical' and self.get_value(qualifier='irrad_frac_refl_bol', component=component, context='component', **_skip_filter_checks) > 0:
+                #                 if component not in offending_components:
+                #                     offending_components.append(component)
+                #                 if dataset not in offending_datasets:
+                #                     offending_datasets.append(dataset)
 
-                    if len(offending_components) and len(offending_datasets):
-                        report.add_item(self,
-                                        "ellc does not support irradiation with flux-weighted RVs.  Disable irradiation, use dynamical RVs, or set irrad_frac_refl_bol to 0.",
-                                        self.filter(qualifier='irrad_method', compute=compute, context='compute', **_skip_filter_checks).to_list()+
-                                        self.filter(qualifier='rv_method', compute=compute, component=offending_components, dataset=offending_datasets, context='compute', **_skip_filter_checks).to_list()+
-                                        self.filter(qualifier='enabled', kind='rv', compute=compute, dataset=offending_datasets, context='compute', value=True, **_skip_filter_checks).to_list()+
-                                        self.filter(qualifier='irrad_frac_refl_bol', component=offending_components, context='component', **_skip_filter_checks).to_list()+
-                                        addl_parameters,
-                                        True, 'run_compute')
+                #     if len(offending_components) and len(offending_datasets):
+                #         report.add_item(self,
+                #                         "ellc does not support irradiation with flux-weighted RVs.  Disable irradiation, use dynamical RVs, or set irrad_frac_refl_bol to 0.",
+                #                         self.filter(qualifier='irrad_method', compute=compute, context='compute', **_skip_filter_checks).to_list()+
+                #                         self.filter(qualifier='rv_method', compute=compute, component=offending_components, dataset=offending_datasets, context='compute', **_skip_filter_checks).to_list()+
+                #                         self.filter(qualifier='enabled', kind='rv', compute=compute, dataset=offending_datasets, context='compute', value=True, **_skip_filter_checks).to_list()+
+                #                         self.filter(qualifier='irrad_frac_refl_bol', component=offending_components, context='component', **_skip_filter_checks).to_list()+
+                #                         addl_parameters,
+                #                         True, 'run_compute')
 
                 dpdt_non_zero = [p for p in self.filter(qualifier='dpdt', context='component', **_skip_filter_checks).to_list() if p.get_value() != 0]
                 if len(dpdt_non_zero):
