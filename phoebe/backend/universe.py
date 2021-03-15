@@ -2089,6 +2089,7 @@ class Star_roche(Star):
             delta = _estimate_delta(ntriangles, av['larea'])
 
             logger.debug("libphoebe.roche_misaligned_marching_mesh{}".format(mesh_args))
+            print("{}: libphoebe.roche_misaligned_marching_mesh{}".format(self.component, mesh_args))
             try:
                 new_mesh = libphoebe.roche_misaligned_marching_mesh(*mesh_args,
                                                                     delta=delta,
