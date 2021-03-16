@@ -2034,7 +2034,7 @@ class Differential_EvolutionBackend(BaseSolverBackend):
             bounds = [_get_bounds(param, bounds_dc.dists[uniqueids.index(param.uniqueid)] if param.uniqueid in uniqueids else None, bounds_sigma) for param in params]
             options = {k:v for k,v in kwargs.items() if k in ['strategy', 'maxiter', 'popsize']}
 
-            def _progressbar(xi):
+            def _progressbar(xi, convergence=0):
                 global _minimize_iter
                 _minimize_iter += 1
                 global _minimize_pbar
@@ -2048,7 +2048,7 @@ class Differential_EvolutionBackend(BaseSolverBackend):
                 _minimize_iter = 0
                 global _minimize_pbar
                 _minimize_pbar = _tqdm(total=options.get('maxiter'))
-                compute_kwargs = {k:v for k,v in kwargs.items() if k in b.get_compute(compute=compute, **_skip_filter_checks).qualifiers}
+            compute_kwargs = {k:v for k,v in kwargs.items() if k in b.get_compute(compute=compute, **_skip_filter_checks).qualifiers}
             
             logger.debug("calling scipy.optimize.differential_evolution(_lnprobability_negative, bounds={}, args=(b, {}, {}, {}, {}, {}), options={})".format(bounds, params_uniqueids, compute, [], kwargs.get('solution', None), compute_kwargs, options))
             # TODO: would it be cheaper to pass the whole bundle (or just make one copy originally so we restore original values) than copying for each iteration?
