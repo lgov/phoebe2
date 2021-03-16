@@ -2117,18 +2117,35 @@ class Differential_EvolutionBackend(BaseSolverBackend):
             # bounds_combine and bounds_sigma into account).  Otherwise, the limits
             # of the parameter itself are adopted.
             bounds = [_get_bounds(param, bounds_dc.dists[uniqueids.index(param.uniqueid)] if param.uniqueid in uniqueids else None, bounds_sigma) for param in params]
-
-            compute_kwargs = {k:v for k,v in kwargs.items() if k in b.get_compute(compute=compute, **_skip_filter_checks).qualifiers}
-
             options = {k:v for k,v in kwargs.items() if k in ['strategy', 'maxiter', 'popsize']}
 
+            def _progressbar(xi, convergence=0):
+                global _minimize_iter
+                _minimize_iter += 1
+                global _minimize_pbar
+                _minimize_pbar.update(_minimize_iter)
+
+            # set _within solver to prevent run_compute progressbars
+            b._within_solver = True
+
+            if _has_tqdm and kwargs.get('progressbar', False):
+                global _minimize_iter
+                _minimize_iter = 0
+                global _minimize_pbar
+                _minimize_pbar = _tqdm(total=options.get('maxiter'))
+            compute_kwargs = {k:v for k,v in kwargs.items() if k in b.get_compute(compute=compute, **_skip_filter_checks).qualifiers}
+            
             logger.debug("calling scipy.optimize.differential_evolution(_lnprobability_negative, bounds={}, args=(b, {}, {}, {}, {}, {}), options={})".format(bounds, params_uniqueids, compute, [], kwargs.get('solution', None), compute_kwargs, options))
             # TODO: would it be cheaper to pass the whole bundle (or just make one copy originally so we restore original values) than copying for each iteration?
             args = (_bsolver(b, solver, compute, []), params_uniqueids, compute, [], 'first', kwargs.get('solution', None), compute_kwargs)
+            
             res = optimize.differential_evolution(_lnprobability_negative, bounds,
                                     args=args,
                                     workers=pool.map, updating='deferred',
+                                    callback=_progressbar if _has_tqdm and kwargs.get('progressbar', False) else None, 
                                     **options)
+            b._within_solver = False
+            
         else:
             # NOTE: because we overrode self._run_worker to skip loading the
             # bundle, b is just a json string here.  If we ever need the
