@@ -45,7 +45,7 @@ _url_tables_server = 'http://tables.phoebe-project.org'
 
 # Future atmosphere tables could exist in the passband files, but the current
 # release won't be able to handle those.
-_supported_atms = ['blackbody', 'ck2004', 'phoenix', 'extern_atmx', 'extern_planckint']
+_supported_atms = ['blackbody', 'ck2004', 'phoenix','tmap', 'extern_atmx', 'extern_planckint']
 
 # Global passband table. This dict should never be tinkered with outside
 # of the functions in this module; it might be nice to make it read-only
@@ -348,6 +348,22 @@ class Passband:
             data.append(fits.table_to_hdu(Table({'ebv': ph_ebvs}, meta={'extname': 'PH_EBVS'})))
             data.append(fits.table_to_hdu(Table({'rv': ph_rvs}, meta={'extname': 'PH_RVS'})))
 
+        if 'tmap:Inorm' in self.content:
+            tm_teffs, tm_loggs, tm_abuns = self._tmap_axes
+            data.append(fits.table_to_hdu(Table({'teff': TM_teffs}, meta={'extname': 'TM_TEFFS'})))
+            data.append(fits.table_to_hdu(Table({'logg': TM_loggs}, meta={'extname': 'TM_LOGGS'})))
+            data.append(fits.table_to_hdu(Table({'abun': TM_abuns}, meta={'extname': 'TM_ABUNS'})))
+
+        if 'tmap:Imu' in self.content:
+            TM_mus = self._tmap_intensity_axes[-1]
+            data.append(fits.table_to_hdu(Table({'mu': TM_mus}, meta={'extname': 'TM_MUS'})))
+
+        if 'tmap:ext' in self.content:
+            tm_ebvs = self._tmap_extinct_axes[-2]
+            tm_rvs = self._tmap_extinct_axes[-1]
+            data.append(fits.table_to_hdu(Table({'ebv': TM_ebvs}, meta={'extname': 'TM_EBVS'})))
+            data.append(fits.table_to_hdu(Table({'rv': TM_rvs}, meta={'extname': 'TM_RVS'})))
+
         # Data:
         if 'blackbody:ext' in self.content:
             data.append(fits.ImageHDU(self._bb_extinct_energy_grid, name='BBEGRID'))
@@ -392,6 +408,26 @@ class Passband:
         if 'phoenix:ext' in self.content:
             data.append(fits.ImageHDU(self._phoenix_extinct_energy_grid, name='PHXEGRID'))
             data.append(fits.ImageHDU(self._phoenix_extinct_photon_grid, name='PHXPGRID'))
+
+        if 'tmap:Inorm' in self.content:
+            data.append(fits.ImageHDU(self._tmap_energy_grid, name='TMNEGRID'))
+            data.append(fits.ImageHDU(self._tmap_photon_grid, name='TMNPGRID'))
+
+        if 'tmap:Imu' in self.content:
+            data.append(fits.ImageHDU(self._tmap_Imu_energy_grid, name='TMFEGRID'))
+            data.append(fits.ImageHDU(self._tmap_Imu_photon_grid, name='TMFPGRID'))
+
+        if 'tmap:ld' in self.content:
+            data.append(fits.ImageHDU(self._tmap_ld_energy_grid, name='TMLEGRID'))
+            data.append(fits.ImageHDU(self._tmap_ld_photon_grid, name='TMLPGRID'))
+
+        if 'tmap:ldint' in self.content:
+            data.append(fits.ImageHDU(self._tmap_ldint_energy_grid, name='TMIEGRID'))
+            data.append(fits.ImageHDU(self._tmap_ldint_photon_grid, name='TMIPGRID'))
+
+        if 'tmap:ext' in self.content:
+            data.append(fits.ImageHDU(self._tmap_extinct_energy_grid, name='TMXEGRID'))
+            data.append(fits.ImageHDU(self._tmap_extinct_photon_grid, name='TMXPGRID'))
 
         pb = fits.HDUList(data)
         pb.writeto(archive, overwrite=overwrite)
@@ -515,6 +551,30 @@ class Passband:
                     self._phoenix_extinct_axes = (np.array(list(hdul['ph_teffs'].data['teff'])),np.array(list(hdul['ph_loggs'].data['logg'])), np.array(list(hdul['ph_abuns'].data['abun'])), np.array(list(hdul['ph_ebvs'].data['ebv'])), np.array(list(hdul['ph_rvs'].data['rv'])))
                     self._phoenix_extinct_energy_grid = hdul['phxegrid'].data
                     self._phoenix_extinct_photon_grid = hdul['phxpgrid'].data
+
+                if 'tmap:Inorm' in self.content:
+                    self._tmap_axes = (np.array(list(hdul['tm_teffs'].data['teff'])), np.array(list(hdul['tm_loggs'].data['logg'])), np.array(list(hdul['tm_abuns'].data['abun'])))
+                    self._tmap_energy_grid = hdul['tmnegrid'].data
+                    self._tmap_photon_grid = hdul['tmnpgrid'].data
+
+                if 'tmap:Imu' in self.content:
+                    self._tmap_intensity_axes = (np.array(list(hdul['tm_teffs'].data['teff'])), np.array(list(hdul['tm_loggs'].data['logg'])), np.array(list(hdul['tm_abuns'].data['abun'])), np.array(list(hdul['tm_mus'].data['mu'])))
+                    self._tmap_Imu_energy_grid = hdul['tmfegrid'].data
+                    self._tmap_Imu_photon_grid = hdul['tmfpgrid'].data
+
+                if 'tmap:ld' in self.content:
+                    self._tmap_ld_energy_grid = hdul['tmlegrid'].data
+                    self._tmap_ld_photon_grid = hdul['tmlpgrid'].data
+
+                if 'tmap:ldint' in self.content:
+                    self._tmap_ldint_energy_grid = hdul['tmiegrid'].data
+                    self._tmap_ldint_photon_grid = hdul['tmipgrid'].data
+
+                if 'tmap:ext' in self.content:
+                    self._tmap_extinct_axes = (np.array(list(hdul['tm_teffs'].data['teff'])),np.array(list(hdul['tm_loggs'].data['logg'])), np.array(list(hdul['tm_abuns'].data['abun'])), np.array(list(hdul['tm_ebvs'].data['ebv'])), np.array(list(hdul['tm_rvs'].data['rv'])))
+                    self._tmap_extinct_energy_grid = hdul['tmxegrid'].data
+                    self._tmap_extinct_photon_grid = hdul['tmxpgrid'].data
+
 
         return self
 
