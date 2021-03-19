@@ -19,3 +19,6 @@ MANIFEST
 libphoebe.so
 
 *.swp
+libphoebe.cpython-39-darwin.so
+phoebe.egg-info/PKG-INFO
+phoebe/algorithms/ceclipse.cpython-39-darwin.so
