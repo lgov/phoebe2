@@ -1154,6 +1154,174 @@ class Passband:
         if 'phoenix:Inorm' not in self.content:
             self.content.append('phoenix:Inorm')
 
+    def compute_tmap_response(self, path, verbose=False):
+        """
+        Computes TMAP intensities across the entire
+        range of model atmospheres.
+
+        Arguments
+        -----------
+        * `path` (string): path to the directory containing TMAP SEDs.
+        * `verbose` (bool, optional, default=False): switch to determine whether
+            computing progress should be printed on screen.
+        """
+
+        models = glob.glob(path+'/*DAT')
+        Nmodels = len(models)
+
+        Teff, logg, abun = np.empty(Nmodels), np.empty(Nmodels), np.empty(Nmodels)
+        InormE, InormP = np.empty(Nmodels), np.empty(Nmodels)
+
+        if verbose:
+            print('Computing TMAP normal passband intensities for %s:%s.' % (self.pbset, self.pbname))
+
+        for i, model in enumerate(models):
+            table=np.loadtxt(model,comments='*')
+            intensities = table.T[32]*1e7  # erg/s/cm^2/A -> W/m^3 CHECK UNITS!
+            wavelengths = c.to(u.m/u.s).value/table.T[0] #Frequency in Hz -> wavelength in m
+            spc = np.vstack((wavelengths, intensities))
+
+            model = model[model.rfind('/')+1:] # get relative pathname
+            Teff[i] = float(model[0:7])
+            logg[i] = float(model[8:12])
+            abun[i] = float(model[13:16]) #H abundance
+
+            wl = spc[0][(spc[0] >= self.ptf_table['wl'][0]) & (spc[0] <= self.ptf_table['wl'][-1])]
+            fl = spc[1][(spc[0] >= self.ptf_table['wl'][0]) & (spc[0] <= self.ptf_table['wl'][-1])]
+            fl *= self.ptf(wl)
+            flP = fl*wl
+            InormE[i] = np.log10(fl.sum()/self.ptf_area*(wl[1]-wl[0]))             # energy-weighted intensity
+            InormP[i] = np.log10(flP.sum()/self.ptf_photon_area*(wl[1]-wl[0]))     # photon-weighted intensity
+            if verbose:
+                sys.stdout.write('\r' + '%0.0f%% done.' % (100*float(i+1)/len(models)))
+                sys.stdout.flush()
+
+        if verbose:
+            print('')
+
+        # Store axes (Teff, logg, abun) and the full grid of Inorm, with
+        # nans where the grid isn't complete.
+        self._tmap_axes = (np.unique(Teff), np.unique(logg), np.unique(abun))
+
+        self._tmap_photon_grid = np.nan*np.ones((len(self._tmap_axes[0]), len(self._tmap_axes[1]), len(self._tmap_axes[2]), 1))
+        self._tmap_energy_grid = np.nan*np.ones((len(self._tmap_axes[0]), len(self._tmap_axes[1]), len(self._tmap_axes[2]), 1))
+        for i, I0 in enumerate(InormE):
+            self._tmap_energy_grid[Teff[i] == self._tmap_axes[0], logg[i] == self._tmap_axes[1], abun[i] == self._tmap_axes[2], 0] = I0
+        for i, I0 in enumerate(InormP):
+            self._tmap_photon_grid[Teff[i] == self._tmap_axes[0], logg[i] == self._tmap_axes[1], abun[i] == self._tmap_axes[2], 0] = I0
+
+        if 'tmap:Inorm' not in self.content:
+            self.content.append('tmap:Inorm')
+
+    def compute_tmap_reddening(self, path, Ebv=None, Rv=None, verbose=False):
+        """
+        Computes mean effect of reddening (a weighted average) on passband using
+        TMAP atmospheres and CCM89 prescription of extinction.
+
+        See also:
+        * <phoebe.atmospheres.passbands.Passband.compute_bb_reddening>
+        * <phoebe.atmospheres.passbands.Passband.compute_ck2004_reddening>
+        * <phoebe.atmospheres.passbands.Passband.compute_phoenix_reddening>
+
+        Arguments
+        ------------
+        * `path` (string): path to the directory containing tmap SEDs
+        * `Ebv` (float or None, optional, default=None): colour discrepancies E(B-V)
+        * `Rv` (float or None, optional, default=None): Extinction factor
+            (defined at Av / E(B-V) where Av is the visual extinction in magnitudes)
+        * `verbose` (bool, optional, default=False): switch to determine whether
+            computing progress should be printed on screen
+        """
+
+        if Ebv is None:
+            Ebv = np.linspace(0.,3.,30)
+
+        if Rv is None:
+            Rv = np.linspace(2.,6.,16)
+
+        models = glob.glob(path+'/*DAT')
+        Nmodels = len(models)
+
+        NEbv = len(Ebv)
+        NRv = len(Rv)
+
+        Ns = NEbv*NRv
+        combos = Nmodels*Ns
+
+        Ebv1 = np.tile(np.repeat(Ebv, NRv), Nmodels)
+        Rv1 = np.tile(Rv, int(combos/NRv))
+
+        # auxilary matrix for storing Ebv and Rv per model
+        M = np.rollaxis(np.array([np.split(Ebv1*Rv1, Nmodels), np.split(Ebv1, Nmodels)]), 1)
+        M = np.ascontiguousarray(M)
+
+        # Store the length of the filename extensions for parsing:
+        offset = len(models[0])-models[0].rfind('.')
+
+        Teff, logg, abun = np.empty(Nmodels), np.empty(Nmodels), np.empty(Nmodels)
+
+        # extinctE , extinctP per model
+        extinctE , extinctP = np.empty((Nmodels, Ns)), np.empty((Nmodels, Ns))
+
+        if verbose:
+            print('Computing TMAP passband extinction corrections for %s:%s. This will take a while.' % (self.pbset, self.pbname))
+
+
+        for i, model in enumerate(models):
+            table=np.loadtxt(model,comments='*')
+            intensities = table.T[32]*1e7  # erg/s/cm^2/A -> W/m^3 CHECK UNITS!
+            wavelengths = c.to(u.m/u.s).value/table.T[0] #Frequency in Hz -> wavelength in m
+            spc = np.vstack((wavelengths, intensities))
+
+            model = model[model.rfind('/')+1:] # get relative pathname
+            Teff[i] = float(model[0:7])
+            logg[i] = float(model[8:12])
+            abun[i] = float(model[13:16]) #H abundance
+
+            sel = (spc[0] >= self.ptf_table['wl'][0]) & (spc[0] <= self.ptf_table['wl'][-1])
+
+            wl = spc[0][sel]
+            fl = spc[1][sel]
+
+            fl *= self.ptf(wl)
+            flP = fl*wl
+
+            # Alambda = np.matmul(libphoebe.CCM89_extinction(wl), M[i])
+            Alambda = np.matmul(libphoebe.gordon_extinction(wl), M[i])
+            flux_frac = np.exp(-0.9210340371976184*Alambda)             #10**(-0.4*Alambda)
+
+            extinctE[i], extinctP[i] = np.dot([fl/fl.sum(), flP/flP.sum()], flux_frac)
+
+            if verbose:
+                sys.stdout.write('\r' + '%0.0f%% done.' % (100*i/(Nmodels-1)))
+                sys.stdout.flush()
+
+        if verbose:
+            print('')
+
+        # Store axes (Teff, logg, abun) and the full grid of Inorm, with
+        # nans where the grid isn't complete.
+        self._tmap_extinct_axes = (np.unique(Teff), np.unique(logg), np.unique(abun), np.unique(Ebv), np.unique(Rv))
+
+        Teff = np.repeat(Teff, Ns)
+        logg = np.repeat(logg, Ns)
+        abun = np.repeat(abun, Ns)
+
+        self._tmap_extinct_energy_grid = np.nan*np.ones((len(self._tmap_extinct_axes[0]), len(self._tmap_extinct_axes[1]), len(self._tmap_extinct_axes[2]), len(self._tmap_extinct_axes[3]), len(self._tmap_extinct_axes[4]), 1))
+        self._tmap_extinct_photon_grid = np.copy(self._tmap_extinct_energy_grid)
+
+        flatE = extinctE.flat
+        flatP = extinctP.flat
+
+        for i in range(combos):
+            t = (Teff[i] == self._tmap_extinct_axes[0], logg[i] == self._tmap_extinct_axes[1], abun[i] == self._tmap_extinct_axes[2], Ebv1[i] == self._tmap_extinct_axes[3], Rv1[i] == self._tmap_extinct_axes[4], 0)
+            self._tmap_extinct_energy_grid[t] = flatE[i]
+            self._tmap_extinct_photon_grid[t] = flatP[i]
+
+        if 'tmap:ext' not in self.content:
+            self.content.append('tmap:ext')
+
+
     def _blender_plot(self, axes, table, fname=None, show=False):
         import matplotlib.pyplot as plt
         nx, ny = axes[0], axes[1]
@@ -2187,6 +2355,78 @@ class Passband:
         if 'phoenix:ld' not in self.content:
             self.content.append('phoenix:ld')
 
+    def compute_tmap_ldcoeffs(self, weighting='uniform', plot_diagnostics=False):
+        """
+        Computes limb darkening coefficients for linear, log, square root,
+        quadratic and power laws.
+
+        Arguments
+        ----------
+        * `weighting` (string, optional, default='uniform'): determines how data
+            points should be weighted.
+            * 'uniform':  do not apply any per-point weighting
+            * 'interval': apply weighting based on the interval widths
+        """
+        if 'tmap:Imu' not in self.content:
+            print('TMAP intensities are not computed yet. Please compute those first.')
+            return None
+
+        self._tmap_ld_energy_grid = np.nan*np.ones((len(self._tmap_intensity_axes[0]), len(self._tmap_intensity_axes[1]), len(self._tmap_intensity_axes[2]), 11))
+        self._tmap_ld_photon_grid = np.nan*np.ones((len(self._tmap_intensity_axes[0]), len(self._tmap_intensity_axes[1]), len(self._tmap_intensity_axes[2]), 11))
+        mus = self._tmap_intensity_axes[3] # starts with 0
+        if weighting == 'uniform':
+            sigma = np.ones(len(mus))
+        elif weighting == 'interval':
+            delta = np.concatenate( (np.array((mus[1]-mus[0],)), mus[1:]-mus[:-1]) )
+            sigma = 1./np.sqrt(delta)
+        else:
+            print('Weighting scheme \'%s\' is unsupported. Please choose among [\'uniform\', \'interval\']')
+            return None
+
+        for Tindex in range(len(self._tmap_intensity_axes[0])):
+            for lindex in range(len(self._tmap_intensity_axes[1])):
+                for mindex in range(len(self._tmap_intensity_axes[2])):
+                    IsE = 10**self._tmap_Imu_energy_grid[Tindex,lindex,mindex,:].flatten()
+                    fEmask = np.isfinite(IsE)
+                    if len(IsE[fEmask]) <= 1:
+                        continue
+                    IsE /= IsE[fEmask][-1]
+
+                    cElin,  pcov = cfit(f=self._ldlaw_lin,    xdata=mus[fEmask], ydata=IsE[fEmask], sigma=sigma[fEmask], p0=[0.5])
+                    cElog,  pcov = cfit(f=self._ldlaw_log,    xdata=mus[fEmask], ydata=IsE[fEmask], sigma=sigma[fEmask], p0=[0.5, 0.5])
+                    cEsqrt, pcov = cfit(f=self._ldlaw_sqrt,   xdata=mus[fEmask], ydata=IsE[fEmask], sigma=sigma[fEmask], p0=[0.5, 0.5])
+                    cEquad, pcov = cfit(f=self._ldlaw_quad,   xdata=mus[fEmask], ydata=IsE[fEmask], sigma=sigma[fEmask], p0=[0.5, 0.5])
+                    cEnlin, pcov = cfit(f=self._ldlaw_nonlin, xdata=mus[fEmask], ydata=IsE[fEmask], sigma=sigma[fEmask], p0=[0.5, 0.5, 0.5, 0.5])
+                    self._tmap_ld_energy_grid[Tindex, lindex, mindex] = np.hstack((cElin, cElog, cEsqrt, cEquad, cEnlin))
+
+                    IsP = 10**self._tmap_Imu_photon_grid[Tindex,lindex,mindex,:].flatten()
+                    fPmask = np.isfinite(IsP)
+                    IsP /= IsP[fPmask][-1]
+
+                    cPlin,  pcov = cfit(f=self._ldlaw_lin,    xdata=mus[fPmask], ydata=IsP[fPmask], sigma=sigma[fEmask], p0=[0.5])
+                    cPlog,  pcov = cfit(f=self._ldlaw_log,    xdata=mus[fPmask], ydata=IsP[fPmask], sigma=sigma[fEmask], p0=[0.5, 0.5])
+                    cPsqrt, pcov = cfit(f=self._ldlaw_sqrt,   xdata=mus[fPmask], ydata=IsP[fPmask], sigma=sigma[fEmask], p0=[0.5, 0.5])
+                    cPquad, pcov = cfit(f=self._ldlaw_quad,   xdata=mus[fPmask], ydata=IsP[fPmask], sigma=sigma[fEmask], p0=[0.5, 0.5])
+                    cPnlin, pcov = cfit(f=self._ldlaw_nonlin, xdata=mus[fPmask], ydata=IsP[fPmask], sigma=sigma[fEmask], p0=[0.5, 0.5, 0.5, 0.5])
+                    self._tmap_ld_photon_grid[Tindex, lindex, mindex] = np.hstack((cPlin, cPlog, cPsqrt, cPquad, cPnlin))
+
+                    if plot_diagnostics:
+                        if Tindex == 10 and lindex == 9 and mindex == 5:
+                            print(self._tmap_intensity_axes[0][Tindex], self._tmap_intensity_axes[1][lindex], self._tmap_intensity_axes[2][mindex])
+                            print(mus, IsE)
+                            print(cElin, cElog, cEsqrt)
+                            import matplotlib.pyplot as plt
+                            plt.plot(mus[fEmask], IsE[fEmask], 'bo')
+                            plt.plot(mus[fEmask], self._ldlaw_lin(mus[fEmask], *cElin), 'r-')
+                            plt.plot(mus[fEmask], self._ldlaw_log(mus[fEmask], *cElog), 'g-')
+                            plt.plot(mus[fEmask], self._ldlaw_sqrt(mus[fEmask], *cEsqrt), 'y-')
+                            plt.plot(mus[fEmask], self._ldlaw_quad(mus[fEmask], *cEquad), 'm-')
+                            plt.plot(mus[fEmask], self._ldlaw_nonlin(mus[fEmask], *cEnlin), 'k-')
+                            plt.show()
+
+        if 'tmap:ld' not in self.content:
+            self.content.append('tmap:ld')
+
     def export_phoenix_atmtab(self):
         """
         Exports PHOENIX intensity table to a PHOEBE legacy compatible format.
@@ -2241,7 +2481,9 @@ class Passband:
         elif atm == 'phoenix' and not photon_weighted:
             axes = self._phoenix_intensity_axes
             grid = self._phoenix_ld_energy_grid
-        else:
+        elif atm == 'tmap' and not photon_weighted:
+            axes = self._tmap_intensity_axes
+            grid = self._tmap_ld_energy_grid        else:
             print('atmosphere model %s cannot be exported.' % atm)
             return None
 
@@ -2361,6 +2603,54 @@ class Passband:
         if 'phoenix:ldint' not in self.content:
             self.content.append('phoenix:ldint')
 
+    def compute_tmap_ldints(self):
+        """
+        Computes integrated limb darkening profiles for TMAP atmospheres.
+        These are used for intensity-to-flux transformations. The evaluated
+        integral is:
+
+        ldint = 2 \int_0^1 Imu mu dmu
+        """
+
+        if 'tmap:Imu' not in self.content:
+            print('TMAP intensities are not computed yet. Please compute those first.')
+            return None
+
+        ldaxes = self._tmap_intensity_axes
+        ldtable = self._tmap_Imu_energy_grid
+        pldtable = self._tmap_Imu_photon_grid
+
+        self._tmap_ldint_energy_grid = np.nan*np.ones((len(ldaxes[0]), len(ldaxes[1]), len(ldaxes[2]), 1))
+        self._tmap_ldint_photon_grid = np.nan*np.ones((len(ldaxes[0]), len(ldaxes[1]), len(ldaxes[2]), 1))
+
+        mu = ldaxes[3]
+        Imu = 10**ldtable[:,:,:,:]/10**ldtable[:,:,:,-1:]
+        pImu = 10**pldtable[:,:,:,:]/10**pldtable[:,:,:,-1:]
+
+        # To compute the fluxes, we need to evaluate \int_0^1 2pi Imu mu dmu.
+
+        for a in range(len(ldaxes[0])):
+            for b in range(len(ldaxes[1])):
+                for c in range(len(ldaxes[2])):
+
+                    ldint = 0.0
+                    pldint = 0.0
+                    for i in range(len(mu)-1):
+                        ki = (Imu[a,b,c,i+1]-Imu[a,b,c,i])/(mu[i+1]-mu[i])
+                        ni = Imu[a,b,c,i]-ki*mu[i]
+                        ldint += ki/3*(mu[i+1]**3-mu[i]**3) + ni/2*(mu[i+1]**2-mu[i]**2)
+
+                        pki = (pImu[a,b,c,i+1]-pImu[a,b,c,i])/(mu[i+1]-mu[i])
+                        pni = pImu[a,b,c,i]-pki*mu[i]
+                        pldint += pki/3*(mu[i+1]**3-mu[i]**3) + pni/2*(mu[i+1]**2-mu[i]**2)
+
+                    self._tmap_ldint_energy_grid[a,b,c] = 2*ldint
+                    self._tmap_ldint_photon_grid[a,b,c] = 2*pldint
+
+        if 'tmap:ldint' not in self.content:
+            self.content.append('tmap:ldint')
+
+
     def interpolate_ldcoeffs(self, Teff=5772., logg=4.43, abun=0.0,
                                     ldatm='ck2004', ld_func='power',
                                     photon_weighted=False):
@@ -2405,6 +2695,9 @@ class Passband:
         elif ldatm == 'phoenix' and not photon_weighted:
             axes = self._phoenix_intensity_axes
             table = self._phoenix_ld_energy_grid
+        elif ldatm == 'tmap' and not photon_weighted:
+            axes = self._tmap_intensity_axes
+            table = self._tmap_ld_energy_grid
         else:
             print('ldatm=%s is not supported for LD interpolation.' % ldatm)
             return None
@@ -2502,6 +2795,30 @@ class Passband:
                 Rv=Rv*np.ones_like(Teff)
                 req = np.vstack((Teff, logg, abun, extinct, Rv)).T
                 extinct_factor = libphoebe.interp(req, self._phoenix_extinct_axes, table).T[0]
+
+            nanmask = np.isnan(extinct_factor)
+            if np.any(nanmask):
+                raise ValueError('Atmosphere parameters out of bounds: atm=%s, extinct=%f, Rv=%f, Teff=%s, logg=%s, abun=%s' % (atm, extinct, Rv, Teff[nanmask], logg[nanmask], abun[nanmask]))
+
+            return extinct_factor
+
+        if atm == 'tmap':
+            if 'tmap:ext' not in self.content:
+                raise ValueError('Extinction factors are not computed yet. Please compute those first.')
+
+            if photon_weighted:
+                table = self._tmap_extinct_photon_grid
+            else:
+                table = self._tmap_extinct_energy_grid
+
+            if not hasattr(Teff, '__iter__'):
+                req = np.array(((Teff, logg, abun, extinct, Rv),))
+                extinct_factor = libphoebe.interp(req, self._tmap_extinct_axes[0:5], table)[0][0]
+            else:
+                extinct=extinct*np.ones(len(Teff))
+                Rv=Rv*np.ones(len(Teff))
+                req = np.vstack((Teff, logg, abun, extinct, Rv)).T
+                extinct_factor = libphoebe.interp(req, self._tmap_extinct_axes[0:5], table).T[0]
 
             nanmask = np.isnan(extinct_factor)
             if np.any(nanmask):
@@ -2663,6 +2980,12 @@ class Passband:
 
         return 10**Inorm
 
+    def _Inorm_tmap(self, Teff, logg, abun, photon_weighted=False):
+        req = np.vstack((Teff, logg, abun)).T
+        Inorm = libphoebe.interp(req, self._tmap_axes, self._tmap_photon_grid if photon_weighted else self._tmap_energy_grid).T[0]
+
+        return 10**Inorm
+
     def _Inorm_blended(self, Teff, logg, abun, photon_weighted=False):
         req = np.vstack((Teff, logg, abun)).T
         Inorm = 10**libphoebe.interp(req, self._blended_axes, self._blended_photon_grid if photon_weighted else self._blended_energy_grid).T[0]
@@ -2696,6 +3019,16 @@ class Passband:
         else:
             req = np.vstack((Teff, logg, abun, mu)).T
             Imu = libphoebe.interp(req, self._phoenix_intensity_axes, self._phoenix_Imu_photon_grid if photon_weighted else self._phoenix_Imu_energy_grid).T[0]
+
+        return 10**Imu
+
+    def _Imu_tmap(self, Teff, logg, abun, mu, photon_weighted=False):
+        if not hasattr(Teff, '__iter__'):
+            req = np.array(((Teff, logg, abun, mu),))
+            Imu = libphoebe.interp(req, self._tmap_intensity_axes, self._tmap_Imu_photon_grid if photon_weighted else self._tmap_Imu_energy_grid)[0][0]
+        else:
+            req = np.vstack((Teff, logg, abun, mu)).T
+            Imu = libphoebe.interp(req, self._tmap_intensity_axes, self._tmap_Imu_photon_grid if photon_weighted else self._tmap_Imu_energy_grid).T[0]
 
         return 10**Imu
 
@@ -2771,6 +3104,9 @@ class Passband:
         elif atm == 'phoenix' and 'phoenix:Inorm' in self.content:
             retval = self._Inorm_phoenix(Teff, logg, abun, photon_weighted=photon_weighted)
 
+        elif atm == 'tmap' and 'tmap:Inorm' in self.content:
+            retval = self._Inorm_tmap(Teff, logg, abun, photon_weighted=photon_weighted)
+
         elif atm == 'blended' and 'blended' in self.content:
             retval = self._Inorm_blended(Teff, logg, abun, photon_weighted=photon_weighted)
         else:
@@ -2833,6 +3169,12 @@ class Passband:
                 if np.any(nanmask):
                     raise ValueError('Atmosphere parameters out of bounds: Teff=%s, logg=%s, abun=%s, mu=%s' % (Teff[nanmask], logg[nanmask], abun[nanmask], mu[nanmask]))
                 return retval
+            elif atm == 'tmap' and 'tmap:Imu' in self.content:
+                retval = self._Imu_tmap(Teff, logg, abun, mu, photon_weighted=photon_weighted)
+                nanmask = np.isnan(retval)
+                if np.any(nanmask):
+                    raise ValueError('Atmosphere parameters out of bounds: Teff=%s, logg=%s, abun=%s, mu=%s' % (Teff[nanmask], logg[nanmask], abun[nanmask], mu[nanmask]))
+                return retval
             else:
                 raise ValueError('atm={} not supported by {}:{} ld_func=interp'.format(atm, self.pbset, self.pbname))
 
@@ -2879,6 +3221,16 @@ class Passband:
 
         return ldint
 
+    def _ldint_tmap(self, Teff, logg, abun, photon_weighted):
+        if not hasattr(Teff, '__iter__'):
+            req = np.array(((Teff, logg, abun),))
+            ldint = libphoebe.interp(req, self._tmap_axes, self._tmap_ldint_photon_grid if photon_weighted else self._tmap_ldint_energy_grid)[0][0]
+        else:
+            req = np.vstack((Teff, logg, abun)).T
+            ldint = libphoebe.interp(req, self._tmap_axes, self._tmap_ldint_photon_grid if photon_weighted else self._tmap_ldint_energy_grid).T[0]
+
+        return ldint
+
     def ldint(self, Teff=5772., logg=4.43, abun=0.0, ldatm='ck2004', ld_func='interp', ld_coeffs=None, photon_weighted=False):
         """
         Arguments
@@ -2911,6 +3263,8 @@ class Passband:
                 retval = self._ldint_ck2004(Teff, logg, abun, photon_weighted=photon_weighted)
             elif ldatm == 'phoenix':
                 retval = self._ldint_phoenix(Teff, logg, abun, photon_weighted=photon_weighted)
+            elif ldatm == 'tmap':
+                retval = self._ldint_tmap(Teff, logg, abun, photon_weighted=photon_weighted)
             else:
                 raise ValueError('ldatm={} not supported with ld_func=interp'.format(ldatm))
             nanmask = np.isnan(retval)
@@ -3927,6 +4281,11 @@ if __name__ == '__main__':
     pb.compute_phoenix_ldcoeffs()
     pb.compute_phoenix_ldints()
 
+    pb.compute_tmap_response(path='tables/tmap', verbose=True)
+    pb.compute_tmap_intensities(path='tables/tmap', verbose=True)
+    pb.compute_tmap_ldcoeffs()
+    pb.compute_tmap_ldints()
+
     pb.save('bolometric.fits')
 
     pb = Passband(
@@ -3955,6 +4314,12 @@ if __name__ == '__main__':
     pb.compute_phoenix_ldcoeffs()
     pb.compute_phoenix_ldints()
     pb.compute_phoenix_reddening(path='tables/phoenix', verbose=True)
+
+    pb.compute_tmap_response(path='tables/tmap', verbose=True)
+    pb.compute_tmap_intensities(path='tables/tmap', verbose=True)
+    pb.compute_tmap_ldcoeffs()
+    pb.compute_tmap_ldints()
+    pb.compute_tmap_reddening(path='tables/tmap', verbose=True)
 
     pb.import_wd_atmcof('tables/wd/atmcofplanck.dat', 'tables/wd/atmcof.dat', 7)
 
