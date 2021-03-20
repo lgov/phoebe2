@@ -1177,8 +1177,9 @@ class Passband:
 
         for i, model in enumerate(models):
             table=np.loadtxt(model,comments='*')
-            intensities = table.T[32]*1e7  # erg/s/cm^2/A -> W/m^3 CHECK UNITS!
-            wavelengths = c.to(u.m/u.s).value/table.T[0] #Frequency in Hz -> wavelength in m
+            #Have to flip arrays because ordered by frequency not wavelength
+            intensities = np.flip(table.T[32])*1e7  # erg/s/cm^2/A -> W/m^3 CHECK UNITS!
+            wavelengths = c.to(u.m/u.s).value/np.flip(table.T[0]) #Frequency in Hz -> wavelength in m
             spc = np.vstack((wavelengths, intensities))
 
             model = model[model.rfind('/')+1:] # get relative pathname
@@ -1269,8 +1270,9 @@ class Passband:
 
         for i, model in enumerate(models):
             table=np.loadtxt(model,comments='*')
-            intensities = table.T[32]*1e7  # erg/s/cm^2/A -> W/m^3 CHECK UNITS!
-            wavelengths = c.to(u.m/u.s).value/table.T[0] #Frequency in Hz -> wavelength in m
+            #Have to flip arrays because ordered by frequency not wavelength
+            intensities = np.flip(table.T[32])*1e7  # erg/s/cm^2/A -> W/m^3 CHECK UNITS!
+            wavelengths = c.to(u.m/u.s).value/np.flip(table.T[0]) #Frequency in Hz -> wavelength in m
             spc = np.vstack((wavelengths, intensities))
 
             model = model[model.rfind('/')+1:] # get relative pathname
@@ -2483,7 +2485,8 @@ class Passband:
             grid = self._phoenix_ld_energy_grid
         elif atm == 'tmap' and not photon_weighted:
             axes = self._tmap_intensity_axes
-            grid = self._tmap_ld_energy_grid        else:
+            grid = self._tmap_ld_energy_grid
+        else:
             print('atmosphere model %s cannot be exported.' % atm)
             return None
 
