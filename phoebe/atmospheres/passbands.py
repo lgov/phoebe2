@@ -1178,9 +1178,9 @@ class Passband:
         for i, model in enumerate(models):
             table=np.loadtxt(model,comments='*')
             #Have to flip arrays because ordered by frequency not wavelength
-            intensities = np.flip(table.T[32])*1e7  # erg/s/cm^2/A -> W/m^3
-#MUST CHECK UNITS HERE!
             wavelengths = c.to(u.m/u.s).value/np.flip(table.T[0]) #Frequency in Hz -> wavelength in m
+            intensities = np.flip(table.T[32])*3e5/(wavelengths**2)  # erg/s/cm^2/Hz -> W/m^3
+#MUST CHECK UNITS HERE!
             spc = np.vstack((wavelengths, intensities))
 
             model = model[model.rfind('/')+1:] # get relative pathname
@@ -1273,9 +1273,9 @@ class Passband:
         for i, model in enumerate(models):
             table=np.loadtxt(model,comments='*')
             #Have to flip arrays because ordered by frequency not wavelength
-            intensities = np.flip(table.T[32])*1e7  # erg/s/cm^2/A -> W/m^3
-#MUST CHECK UNITS!
             wavelengths = c.to(u.m/u.s).value/np.flip(table.T[0]) #Frequency in Hz -> wavelength in m
+            intensities = np.flip(table.T[32])*3e5/(wavelengths**2)  # erg/s/cm^2/Hz -> W/m^3
+#MUST CHECK UNITS HERE!
             spc = np.vstack((wavelengths, intensities))
 
             model = model[model.rfind('/')+1:] # get relative pathname
@@ -2242,10 +2242,10 @@ class Passband:
         for i, model in enumerate(models):
             table=np.loadtxt(model,comments='*')
             #Have to flip arrays because ordered by frequency not wavelength
-#32nd array is for mu~1, not sure how compute_ck2004_intensities is handling the different files for different mus?
-            intensities = np.flip(table.T[32])*1e7  # erg/s/cm^2/A -> W/m^3 CHECK UNITS!
             wavelengths = c.to(u.m/u.s).value/np.flip(table.T[0]) #Frequency in Hz -> wavelength in m
-            spc = np.vstack((wavelengths, intensities))
+#32nd array is for mu~1, not sure how compute_ck2004_intensities is handling the different files for different mus?
+            intensities = np.flip(table.T[32])*3e5/(wavelengths**2)  # erg/s/cm^2/Hz -> W/m^3
+#MUST CHECK UNITS HERE!
 
             model = model[model.rfind('/')+1:] # get relative pathname
             Teff[i] = float(model[0:7])
