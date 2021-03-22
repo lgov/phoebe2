@@ -1178,7 +1178,8 @@ class Passband:
         for i, model in enumerate(models):
             table=np.loadtxt(model,comments='*')
             #Have to flip arrays because ordered by frequency not wavelength
-            intensities = np.flip(table.T[32])*1e7  # erg/s/cm^2/A -> W/m^3 CHECK UNITS!
+            intensities = np.flip(table.T[32])*1e7  # erg/s/cm^2/A -> W/m^3
+#MUST CHECK UNITS HERE!
             wavelengths = c.to(u.m/u.s).value/np.flip(table.T[0]) #Frequency in Hz -> wavelength in m
             spc = np.vstack((wavelengths, intensities))
 
@@ -1191,6 +1192,7 @@ class Passband:
             fl = spc[1][(spc[0] >= self.ptf_table['wl'][0]) & (spc[0] <= self.ptf_table['wl'][-1])]
             fl *= self.ptf(wl)
             flP = fl*wl
+# Will the irregular wl grid cause problems here?
             InormE[i] = np.log10(fl.sum()/self.ptf_area*(wl[1]-wl[0]))             # energy-weighted intensity
             InormP[i] = np.log10(flP.sum()/self.ptf_photon_area*(wl[1]-wl[0]))     # photon-weighted intensity
             if verbose:
@@ -1271,7 +1273,8 @@ class Passband:
         for i, model in enumerate(models):
             table=np.loadtxt(model,comments='*')
             #Have to flip arrays because ordered by frequency not wavelength
-            intensities = np.flip(table.T[32])*1e7  # erg/s/cm^2/A -> W/m^3 CHECK UNITS!
+            intensities = np.flip(table.T[32])*1e7  # erg/s/cm^2/A -> W/m^3
+#MUST CHECK UNITS!
             wavelengths = c.to(u.m/u.s).value/np.flip(table.T[0]) #Frequency in Hz -> wavelength in m
             spc = np.vstack((wavelengths, intensities))
 
@@ -1280,6 +1283,7 @@ class Passband:
             logg[i] = float(model[8:12])
             abun[i] = float(model[13:16]) #H abundance
 
+#Irregular wl grid a problem?
             sel = (spc[0] >= self.ptf_table['wl'][0]) & (spc[0] <= self.ptf_table['wl'][-1])
 
             wl = spc[0][sel]
@@ -2197,6 +2201,154 @@ class Passband:
 
         if 'phoenix:Imu' not in self.content:
             self.content.append('phoenix:Imu')
+
+
+    def compute_tmap_intensities(self, path, particular=None, verbose=False):
+        """
+        Computes direction-dependent passband intensities using TMAP
+        model atmospheres.
+
+        Arguments
+        -----------
+        * `path` (string): path to the directory with SEDs.
+        * `particular` (string, optional, default=None): particular file in
+            `path` to be processed; if None, all files in the directory are
+            processed.
+        * `verbose` (bool, optional, default=False): set to True to display
+            progress in the terminal.
+        """
+
+        if verbose:
+            print('Computing TMAP specific passband intensities for %s:%s.' % (self.pbset, self.pbname))
+
+        models = glob.glob(path+'/*DAT')
+        Nmodels = len(models)
+
+        thetas = np.array([89.92162, 89.58780, 88.99046, 88.13487, 87.02849, 85.68061, 84.10198, 82.30447, 80.30067, 78.10363, 75.72654, 73.18249, 70.48427, 67.64424, 64.67426, 61.58554, 58.38870, 55.09370, 51.70988, 48.24596, 44.71009, 41.10989, 37.45249, 33.74458, 29.99248, 26.20214, 22.37928, 18.52942, 14.65811, 10.77126,  6.87687,  2.99738])
+        mus = np.cos(thetas*180./np.pi)
+
+        Teff, logg, abun = np.empty(Nmodels), np.empty(Nmodels), np.empty(Nmodels)
+
+        ImuE, ImuP = np.empty(Nmodels*len(mus)), np.empty(Nmodels*len(mus))
+        # boostingE, boostingP = np.empty(Nmodels), np.empty(Nmodels)
+
+#THIS IS PRETTY MUCH ALL JUST COPY PASTED FROM CK2004!
+        wavelengths = np.arange(900., 39999.501, 0.5)/1e10 # AA -> m
+
+        keep = (wavelengths >= self.ptf_table['wl'][0]) & (wavelengths <= self.ptf_table['wl'][-1])
+        wl = wavelengths[keep]
+        dwl = wl[1]-wl[0]
+
+        for i, model in enumerate(models):
+            table=np.loadtxt(model,comments='*')
+            #Have to flip arrays because ordered by frequency not wavelength
+#32nd array is for mu~1, not sure how compute_ck2004_intensities is handling the different files for different mus?
+            intensities = np.flip(table.T[32])*1e7  # erg/s/cm^2/A -> W/m^3 CHECK UNITS!
+            wavelengths = c.to(u.m/u.s).value/np.flip(table.T[0]) #Frequency in Hz -> wavelength in m
+            spc = np.vstack((wavelengths, intensities))
+
+            model = model[model.rfind('/')+1:] # get relative pathname
+            Teff[i] = float(model[0:7])
+            logg[i] = float(model[8:12])
+            abun[i] = float(model[13:16]) #H abundance
+
+            wl = spc[0][(spc[0] >= self.ptf_table['wl'][0]) & (spc[0] <= self.ptf_table['wl'][-1])]
+            fl = spc[1][(spc[0] >= self.ptf_table['wl'][0]) & (spc[0] <= self.ptf_table['wl'][-1])]
+
+            flE = self.ptf(wl)*intensities
+            flEint = flE.sum(axis=1)
+
+            flP = wl*flE
+            flPint = flP.sum(axis=1)
+
+#Same dwl problem as compute_tmap_response due to irregular grid?
+            ImuE[i*len(mus):(i+1)*len(mus)] = np.log10(flEint/self.ptf_area*dwl)        # energy-weighted intensity
+            ImuP[i*len(mus):(i+1)*len(mus)] = np.log10(flPint/self.ptf_photon_area*dwl) # photon-weighted intensity
+
+            if verbose:
+                sys.stdout.write('\r' + '%0.0f%% done.' % (100*float(i+1)/len(models)))
+                sys.stdout.flush()
+
+        if verbose:
+            print('')
+
+            # for cmi, cmu in enumerate(mus):
+            #     fl = intensities[cmi,:]
+
+                # make a log-scale copy for boosting and fit a Legendre
+                # polynomial to the Imu envelope by way of sigma clipping;
+                # then compute a Legendre series derivative to get the
+                # boosting index; we only take positive fluxes to keep the
+                # log well defined.
+
+                # lnwl = np.log(wl[fl > 0])
+                # lnfl = np.log(fl[fl > 0]) + 5*lnwl
+
+                # First Legendre fit to the data:
+                # envelope = np.polynomial.legendre.legfit(lnwl, lnfl, 5)
+                # continuum = np.polynomial.legendre.legval(lnwl, envelope)
+                # diff = lnfl-continuum
+                # sigma = np.std(diff)
+                # clipped = (diff > -sigma)
+
+                # Sigma clip to get the continuum:
+                # while True:
+                #     Npts = clipped.sum()
+                #     envelope = np.polynomial.legendre.legfit(lnwl[clipped], lnfl[clipped], 5)
+                #     continuum = np.polynomial.legendre.legval(lnwl, envelope)
+                #     diff = lnfl-continuum
+
+                    # clipping will sometimes unclip already clipped points
+                    # because the fit is slightly different, which can lead
+                    # to infinite loops. To prevent that, we never allow
+                    # clipped points to be resurrected, which is achieved
+                    # by the following bitwise condition (array comparison):
+                #     clipped = clipped & (diff > -sigma)
+
+                #     if clipped.sum() == Npts:
+                #         break
+
+                # derivative = np.polynomial.legendre.legder(envelope, 1)
+                # boosting_index = np.polynomial.legendre.legval(lnwl, derivative)
+
+                # calculate energy (E) and photon (P) weighted fluxes and
+                # their integrals.
+
+                # calculate mean boosting coefficient and use it to get
+                # boosting factors for energy (E) and photon (P) weighted
+                # fluxes.
+
+                # boostE = (flE[fl > 0]*boosting_index).sum()/flEint
+                # boostP = (flP[fl > 0]*boosting_index).sum()/flPint
+                # boostingE[i] = boostE
+                # boostingP[i] = boostP
+
+        self._tmap_intensity_axes = (np.unique(Teff), np.unique(logg), np.unique(abun), np.unique(mus))
+        self._tmap_Imu_energy_grid = np.nan*np.ones((len(self._tmap_intensity_axes[0]), len(self._tmap_intensity_axes[1]), len(self._tmap_intensity_axes[2]), len(self._tmap_intensity_axes[3]), 1))
+        self._tmap_Imu_photon_grid = np.nan*np.ones((len(self._tmap_intensity_axes[0]), len(self._tmap_intensity_axes[1]), len(self._tmap_intensity_axes[2]), len(self._tmap_intensity_axes[3]), 1))
+        # self._tmap_boosting_energy_grid = np.nan*np.ones((len(self._tmap_intensity_axes[0]), len(self._tmap_intensity_axes[1]), len(self._tmap_intensity_axes[2]), len(self._tmap_intensity_axes[3]), 1))
+        # self._tmap_boosting_photon_grid = np.nan*np.ones((len(self._tmap_intensity_axes[0]), len(self._tmap_intensity_axes[1]), len(self._tmap_intensity_axes[2]), len(self._tmap_intensity_axes[3]), 1))
+
+        # Set the limb (mu=0) to 0; in log this actually means
+        # flux=1W/m2, but for all practical purposes that is still 0.
+        self._tmap_Imu_energy_grid[:,:,:,0,:] = 0.0
+        self._tmap_Imu_photon_grid[:,:,:,0,:] = 0.0
+        # self._tmap_boosting_energy_grid[:,:,:,0,:] = 0.0
+        # self._tmap_boosting_photon_grid[:,:,:,0,:] = 0.0
+
+        for i, Imu in enumerate(ImuE):
+            self._tmap_Imu_energy_grid[Teff[int(i/len(mus))] == self._tmap_intensity_axes[0], logg[int(i/len(mus))] == self._tmap_intensity_axes[1], abun[int(i/len(mus))] == self._tmap_intensity_axes[2], mus[i%len(mus)] == self._tmap_intensity_axes[3], 0] = Imu
+        for i, Imu in enumerate(ImuP):
+            self._tmap_Imu_photon_grid[Teff[int(i/len(mus))] == self._tmap_intensity_axes[0], logg[int(i/len(mus))] == self._tmap_intensity_axes[1], abun[int(i/len(mus))] == self._tmap_intensity_axes[2], mus[i%len(mus)] == self._tmap_intensity_axes[3], 0] = Imu
+        # for i, Bavg in enumerate(boostingE):
+        #     self._tmap_boosting_energy_grid[Teff[i] == self._tmap_intensity_axes[0], logg[i] == self._tmap_intensity_axes[1], abun[i] == self._tmap_intensity_axes[2], mu[i] == self._tmap_intensity_axes[3], 0] = Bavg
+        # for i, Bavg in enumerate(boostingP):
+        #     self._tmap_boosting_photon_grid[Teff[i] == self._tmap_intensity_axes[0], logg[i] == self._tmap_intensity_axes[1], abun[i] == self._tmap_intensity_axes[2], mu[i] == self._tmap_intensity_axes[3], 0] = Bavg
+
+        if 'tmap:Imu' not in self.content:
+            self.content.append('tmap:Imu')
+
+
 
     def _ldlaw_lin(self, mu, xl):
         return 1.0-xl*(1-mu)
