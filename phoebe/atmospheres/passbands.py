@@ -2838,12 +2838,19 @@ class Passband:
             print('PHOENIX (Husser et al. 2013) limb darkening coefficients are not computed yet. Please compute those first.')
             return None
 
+        if ldatm == 'tmap' and 'tmap:ld' not in self.content:
+            print('TMAP limb darkening coefficients are not computed yet. Please compute those first.')
+            return None
+
         if ldatm == 'ck2004' and photon_weighted:
             axes = self._ck2004_intensity_axes
             table = self._ck2004_ld_photon_grid
         elif ldatm == 'phoenix' and photon_weighted:
             axes = self._phoenix_intensity_axes
             table = self._phoenix_ld_photon_grid
+        elif ldatm == 'tmap' and photon_weighted:
+            axes = self._tmap_intensity_axes
+            table = self._tmap_ld_photon_grid
         elif ldatm == 'ck2004' and not photon_weighted:
             axes = self._ck2004_intensity_axes
             table = self._ck2004_ld_energy_grid
