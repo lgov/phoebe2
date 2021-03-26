@@ -2661,7 +2661,7 @@ def list_passband_online_history(passband, since_installed=True):
     * (dict): dictionary with timestamps as keys and messages and values.
     """
     if passband not in list_online_passbands(repeat_errors=False):
-        raise ValueError("'{}' passband not availabe online".format(passband))
+        raise ValueError("'{}' passband not available online".format(passband))
 
     url = '{}/pbs/history/{}?phoebe_version={}'.format(_url_tables_server, passband, phoebe_version)
 
