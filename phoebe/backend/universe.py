@@ -554,7 +554,7 @@ class System(object):
             if not np.any(visibilities):
                 avg_line = np.full_like(wavelengths, np.nan)
             else:
-                avg_line = np.average(lines, axis=0, weights=abs_intensities*areas*mus*visibilities)
+                avg_line = np.average(lines, axis=0, weights=abs_intensities*areas*np.abs(mus)*visibilities)
 
             return {'flux_densities': avg_line}
 
@@ -577,7 +577,7 @@ class System(object):
 
             # NOTE: the intensities are already projected but are per unit area
             # so we need to multiply by the /projected/ area of each triangle (thus the extra mu)
-            return {'rv': np.average(rvs, weights=abs_intensities*areas*mus*visibilities)}
+            return {'rv': np.average(rvs, weights=abs_intensities*areas*np.abs(mus)*visibilities)}
 
         elif kind=='lc':
             visibilities = meshes.get_column_flat('visibilities')
@@ -617,7 +617,7 @@ class System(object):
             # note that the intensities are already projected (Imu) but are per unit area
             # so we need to multiply by the /projected/ area of each triangle (thus the extra mu)
 
-            return {'flux': np.sum(intensities*areas*mus*visibilities)*ptfarea}
+            return {'flux': np.sum(intensities*areas*np.abs(mus)*visibilities)*ptfarea}
 
         else:
             raise NotImplementedError("observe for dataset with kind '{}' not implemented".format(kind))
