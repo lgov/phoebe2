@@ -532,7 +532,7 @@ class ProtoMesh(object):
                   'pvertices', 'vertices', 'triangles', 'centers',
                   'coords_for_computations', 'normals_for_computations',
                   'rs', 'rprojs', 'cosbetas',
-                  'areas', 'tareas', 'areas_si',
+                  'areas', 'tareas', 'areas_si', 'tareas_si',
                   'velocities', 'vnormals', 'tnormals',
                   'normgrads', 'volume', 'area',
                   'phis', 'thetas',
@@ -930,6 +930,8 @@ class ProtoMesh(object):
         """
         Return the array of triangle areas, where each item is a scalar/float.
 
+        USED FOR WD STYLE MESHING ONLY
+
         TODO: UNIT?
 
         (Nx1)
@@ -943,6 +945,18 @@ class ProtoMesh(object):
         """
         if self._areas is not None:
             return (self.areas*u.solRad**2).to(u.m**2).value
+        else:
+            return None
+
+    @property
+    def tareas_si(self):
+        """
+        TODO: add documentation
+
+        USED FOR WD STYLE MESHING ONLY
+        """
+        if self._tareas is not None:
+            return (self.tareas*u.solRad**2).to(u.m**2).value
         else:
             return None
 
@@ -1377,6 +1391,21 @@ class Mesh(ScaledProtoMesh):
             return self._weights
         else:
             return np.full((self.Ntriangles, 3), 1./3)
+
+    @property
+    def areas(self):
+        """
+        Return the array of areas, where each item is a scalar/float.
+
+        TODO: UNIT?
+
+        (Nx1)
+        """
+        # return self._areas
+        proj_surface_area = np.sum(self._areas * self.mus * (self.mus > 0))
+        horizon_area = self._horizon_area
+        print("*** horizon_area/proj_surface_area = {} / {} = {}".format(horizon_area, proj_surface_area, horizon_area/proj_surface_area))
+        return self._areas * horizon_area / proj_surface_area
 
     @property
     def observables(self):

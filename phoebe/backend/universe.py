@@ -7,7 +7,7 @@ import copy
 
 from phoebe.atmospheres import passbands
 from phoebe.distortions import roche, rotstar
-from phoebe.backend import eclipse, oc_geometry, mesh, mesh_wd
+from phoebe.backend import eclipse, horizon_analytic, oc_geometry, mesh, mesh_wd
 from phoebe.utils import _bytes
 import libphoebe
 
@@ -299,6 +299,7 @@ class System(object):
             body.update_position(time, xs, ys, zs, vxs, vys, vzs,
                                  ethetas, elongans, eincls,
                                  ds=ds, Fs=Fs, ignore_effects=ignore_effects)
+
 
 
     def populate_observables(self, time, kinds, datasets, ignore_effects=False):
@@ -1032,6 +1033,24 @@ class Body(object):
                                                 pos, vel, euler, euler_vel,
                                                 self.polar_direction_xyz*self.freq_rot*self._scale,
                                                 component_com_x)
+
+        # Next, we'll compute the theoretical projected surface area to correct for any triangle effects
+        if self.distortion_method == 'roche':
+            q, F, d, s, Phi = self.instantaneous_mesh_args # ONLY roche misaligned
+            scale = self._scale
+            horizon = horizon_analytic.marching(q, F, d, Phi, scale, euler, pos)
+            # horizon is a dict with keys xs (us), ys (vs), zs (ws), rhos, thetas
+            hus = horizon['xs']
+            hvs = horizon['ys']
+            # Use Green's theorem to estimate the analytic horizon cross section area
+            horizon_area = np.sum([0.5*(hvs[i-1]*(hus[i]-hus[i-1])-hus[i-1]*(hvs[i]-hvs[i-1])) for i in range(1,len(hus))])
+        elif self.distortion_method == 'sphere':
+            r = self.instantaneous_mesh_args
+            horizon_area = np.pi * self.requiv**2
+        else:
+            raise NotImplementedError()
+
+        self._mesh._horizon_area = horizon_area
 
 
         # Lastly, we'll recompute physical quantities (not observables) if
