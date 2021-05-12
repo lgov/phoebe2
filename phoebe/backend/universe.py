@@ -589,8 +589,8 @@ class System(object):
                 return {'flux': np.nan}
 
             intensities = meshes.get_column_flat("intensities:{}".format(dataset), components)
-            mus = meshes.get_column_flat('mus', components)
-            areas = meshes.get_column_flat('areas_corr_si', components)
+            # mus = meshes.get_column_flat('mus', components)
+            amus_corr = meshes.get_column_flat('amus_corr_si', components)
 
             # assume that all bodies are using the same passband and therefore
             # will have the same ptfarea.  If this assumption is ever a problem -
@@ -618,7 +618,7 @@ class System(object):
             # note that the intensities are already projected (Imu) but are per unit area
             # so we need to multiply by the /projected/ area of each triangle (thus the extra mu)
 
-            return {'flux': np.sum(intensities*areas*mus*visibilities)*ptfarea}
+            return {'flux': np.sum(intensities*amus_corr*visibilities)*ptfarea}
 
         else:
             raise NotImplementedError("observe for dataset with kind '{}' not implemented".format(kind))

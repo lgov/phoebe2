@@ -1254,7 +1254,7 @@ class Mesh(ScaledProtoMesh):
 
         self._observables       = {}    # ComputedColumn (each)
 
-        keys = ['mus', 'visibilities', 'weights', 'observables', 'areas_corr', 'areas_corr_si']
+        keys = ['mus', 'visibilities', 'weights', 'observables', 'amus_corr', 'amus_corr_si']
         keys = keys + kwargs.pop('keys', [])
 
         super(Mesh, self).__init__(keys=keys, **kwargs)
@@ -1404,7 +1404,7 @@ class Mesh(ScaledProtoMesh):
         return self._areas
 
     @property
-    def areas_corr(self):
+    def amus_corr(self):
         """
         Return the array of areas, where each item is a scalar/float.
 
@@ -1416,17 +1416,19 @@ class Mesh(ScaledProtoMesh):
         proj_surface_area = np.sum(self._areas * self.mus * (self.mus > 0))
         horizon_area = self._horizon_area
         print("*** horizon_area/proj_surface_area = {} / {} = {}".format(horizon_area, proj_surface_area, horizon_area/proj_surface_area))
-        return self._areas * horizon_area / proj_surface_area
+        return self._areas * self.mus * horizon_area / proj_surface_area
+
 
     @property
-    def areas_corr_si(self):
+    def amus_corr_si(self):
         """
-        TODO: add documentation
+        Return the array of areas, where each item is a scalar/float.
+
+        TODO: UNIT?
+
+        (Nx1)
         """
-        if self.areas_corr is not None:
-            return (self.areas_corr*u.solRad**2).to(u.m**2).value
-        else:
-            return None
+        return (self.amus_corr*u.solRad**2).to(u.m**2).value
 
     @property
     def observables(self):

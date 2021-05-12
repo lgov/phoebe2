@@ -1341,6 +1341,14 @@ class PhoebeBackend(BaseBackendByTime):
                     packetlist.append(_make_packet('areas',
                                                   body.mesh.areas,
                                                   time, info))
+
+                if 'amus' in info['mesh_columns']:
+                    # UNIT: u.solRad**2
+                    amus = body.mesh.amus_corr
+                    amus[amus < 0] = np.nan
+                    packetlist.append(_make_packet('amus',
+                                                   amus,
+                                                   time, info))
                 # if 'tareas' in info['mesh_columns']:
                     # packetlist.append(_make_packet('tareas',
                                                   # body.mesh.tareas,

@@ -29,7 +29,7 @@ _mesh_columns += ['vus', 'vvs', 'vws']
 _mesh_columns += ['nus', 'nvs', 'nws']
 
 # _mesh_columns += ['horizon_xs', 'horizon_ys', 'horizon_zs', 'horizon_analytic_xs', 'horizon_analytic_ys', 'horizon_analytic_zs']
-_mesh_columns += ['areas'] #, 'tareas']
+_mesh_columns += ['areas', 'amus'] #, 'tareas']
 _mesh_columns += ['loggs', 'teffs']
 
 _mesh_columns += ['rprojs', 'mus', 'visibilities', 'visible_centroids']
@@ -719,6 +719,9 @@ def mesh(syn=False, as_ps=True, **kwargs):
 
             if 'areas' in columns:
                 params += [FloatArrayParameter(qualifier='areas', time=t, value=kwargs.get('areas', []), readonly=True, default_unit=u.solRad**2, description='Area of triangles')]
+            if 'amus' in columns:
+                params += [FloatArrayParameter(qualifier='amus', time=t, value=kwargs.get('amus', []), readonly=True, default_unit=u.solRad**2, description='Corrected (so that sum of projected surface area matches theoretical value) projected area of front-facing triangles')]
+
             # if 'tareas' in columns:
                 # params += [FloatArrayParameter(qualifier='tareas', time=t, value=kwargs.get('areas', []), readonly=True, default_unit=u.solRad**2, description='Area of WD triangles')]
 
