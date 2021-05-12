@@ -590,7 +590,7 @@ class System(object):
 
             intensities = meshes.get_column_flat("intensities:{}".format(dataset), components)
             mus = meshes.get_column_flat('mus', components)
-            areas = meshes.get_column_flat('areas_si', components)
+            areas = meshes.get_column_flat('areas_corr_si', components)
 
             # assume that all bodies are using the same passband and therefore
             # will have the same ptfarea.  If this assumption is ever a problem -
