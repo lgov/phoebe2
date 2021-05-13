@@ -1414,11 +1414,16 @@ class Mesh(ScaledProtoMesh):
 
         (Nx1)
         """
-        # return self._areas
-        proj_surface_area = np.sum(self._areas * self.mus * (self.mus > 0))
+        # mus = self.mus
+        # mus = np.mean(self.mus_for_computations[self.triangles], axis=1)
+        mus = np.cos(np.mean(np.arccos(self.mus_for_computations)[self.triangles], axis=1))
+
+        # return self._areas * mus
+
+        proj_surface_area = np.sum(self._areas * mus * (mus > 0))
         horizon_area = self._horizon_area
-        print("*** horizon_area/proj_surface_area = {} / {} = {}".format(horizon_area, proj_surface_area, horizon_area/proj_surface_area))
-        return self._areas * self.mus * horizon_area / proj_surface_area
+        # print("*** horizon_area/proj_surface_area = {} / {} = {}".format(horizon_area, proj_surface_area, horizon_area/proj_surface_area))
+        return self._areas * mus * horizon_area / proj_surface_area
 
 
     @property

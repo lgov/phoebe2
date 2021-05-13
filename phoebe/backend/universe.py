@@ -572,6 +572,7 @@ class System(object):
             # mus here will be from the tnormals of the triangle and will not
             # be weighted by the visibility of the triangle
             mus = meshes.get_column_flat('mus', components)
+
             areas = meshes.get_column_flat('areas_si', components)
             # NOTE: don't need ptfarea because its a float (same for all
             # elements, regardless of component)
@@ -1872,10 +1873,14 @@ class Star(Body):
             # NOTE: pass abs(mus) because otherwise the interpolation will fail internally.
             # Only visible elements are kept, but having pb.Imu return NaN instead for negative mu might be best
 
+            # mus = self.mesh.mus
+            # mus = np.mean(self.mesh.mus_for_computations[self.mesh.triangles], axis=1)
+            mus = np.cos(np.mean(np.arccos(self.mesh.mus_for_computations)[self.mesh.triangles], axis=1))
+
             abs_intensities = pb.Imu(Teff=self.mesh.teffs.vertices_per_triangle.flatten(),
                                      logg=self.mesh.loggs.vertices_per_triangle.flatten(),
                                      abun=self.mesh.abuns.vertices_per_triangle.flatten(),
-                                     mu=abs(np.array([self.mesh.mus]*3).T.reshape(self.mesh.triangles.shape).flatten()),
+                                     mu=abs(np.array([mus]*3).T.reshape(self.mesh.triangles.shape).flatten()),
                                      atm=atm,
                                      ldatm=ldatm,
                                      ldint=ldint,
@@ -1884,6 +1889,49 @@ class Star(Body):
                                      photon_weighted=intens_weighting=='photon')
 
             abs_intensities = abs_intensities.reshape(self.mesh.triangles.shape)
+
+            abs_intensities_face = pb.Imu(Teff=self.mesh.teffs.averages,
+                                          logg=self.mesh.loggs.averages,
+                                          abun=self.mesh.abuns.averages,
+                                          mu=abs(mus),
+                                          atm=atm,
+                                          ldatm=ldatm,
+                                          ldint=ldint,
+                                          ld_func=ld_func if ld_mode != 'interp' else ld_mode,
+                                          ld_coeffs=ld_coeffs,
+                                          photon_weighted=intens_weighting=='photon'
+                                          )
+
+            # abs_intensities = np.array([abs_intensities_face]*3).T.reshape(self.mesh.triangles.shape)
+
+            if False:
+                abs_intensities_avg = np.mean(abs_intensities, axis=1)
+                # print("***", abs_intensities_avg.shape, abs_intensities_face.shape)
+                import matplotlib.pyplot as plt
+                plt.axhline(0, color='k', linestyle='dashed')
+                # x = mus[mus>0]
+                # y = (abs_intensities_avg[mus>0]-abs_intensities_face[mus>0]) / abs_intensities_face[mus>0]
+                # m, b = np.polyfit(x, y, 1)
+                plt.plot(x, m*x+b, 'r-')
+                plt.plot(x, y, 'b.')
+
+                # abs_intensities -= m*self.mesh.mus_for_computations
+                # # abs_intensities =
+                # abs_intensities_avg = np.mean(abs_intensities[self.mesh.triangles], axis=1)
+                # y = abs_intensities_avg[self.mesh.mus>0]-abs_intensities_face[self.mesh.mus>0]
+                # plt.plot(x, y, 'g.')
+                plt.ylabel('(Imu(vertex avgd, mu=face) - Imu(face)) / Imu(face)')
+                plt.xlabel('mus')
+                plt.show()
+
+                # mus_avg = np.mean(self.mesh.mus_for_computations[self.mesh.triangles], axis=1)
+                # x = mus_avg[self.mesh.mus>0]-self.mesh.mus[self.mesh.mus>0]
+                # m, b = np.polyfit(x, y, 1)
+                # plt.plot(x, y, 'g.')
+                # plt.plot(x, m*x+b, 'r-')
+                # plt.ylabel('Imu(vertex avgd) - Imu(face)')
+                # plt.xlabel('mu(vertex avgd) - mu(face)')
+                # plt.show()
 
 
             # Beaming/boosting
