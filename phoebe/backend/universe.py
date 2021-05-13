@@ -1869,19 +1869,21 @@ class Star(Body):
                     raise err
 
             # abs_intensities are the projected (limb-darkened) passband intensities
-            # TODO: why do we need to use abs(mus) here?
-            # ! Because the interpolation within Imu will otherwise fail.
-            # ! It would be best to pass only [visibilities > 0] elements to Imu.
-            abs_intensities = pb.Imu(Teff=self.mesh.teffs.for_computations,
-                                     logg=self.mesh.loggs.for_computations,
-                                     abun=self.mesh.abuns.for_computations,
-                                     mu=abs(self.mesh.mus_for_computations),
+            # NOTE: pass abs(mus) because otherwise the interpolation will fail internally.
+            # Only visible elements are kept, but having pb.Imu return NaN instead for negative mu might be best
+
+            abs_intensities = pb.Imu(Teff=self.mesh.teffs.vertices_per_triangle.flatten(),
+                                     logg=self.mesh.loggs.vertices_per_triangle.flatten(),
+                                     abun=self.mesh.abuns.vertices_per_triangle.flatten(),
+                                     mu=abs(np.array([self.mesh.mus]*3).T.reshape(self.mesh.triangles.shape).flatten()),
                                      atm=atm,
                                      ldatm=ldatm,
                                      ldint=ldint,
                                      ld_func=ld_func if ld_mode != 'interp' else ld_mode,
                                      ld_coeffs=ld_coeffs,
                                      photon_weighted=intens_weighting=='photon')
+
+            abs_intensities = abs_intensities.reshape(self.mesh.triangles.shape)
 
 
             # Beaming/boosting

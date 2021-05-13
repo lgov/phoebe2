@@ -359,6 +359,8 @@ class ComputedColumn(object):
         :return: numpy array
         """
         if self.vertices is not None:
+            if self.vertices.shape == self.mesh.triangles.shape:
+                return self.vertices
             return self.vertices[self.mesh.triangles]
         else:
             return None
