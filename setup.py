@@ -346,7 +346,7 @@ else:
     long_description = "\n".join(long_description_s[long_description_s.index("INTRODUCTION"):])
 
 setup (name = 'phoebe',
-       version = 'devel',
+       version = 'workshop2021',
        description = 'PHOEBE devel version',
        long_description=long_description,
        author = 'PHOEBE development team',
