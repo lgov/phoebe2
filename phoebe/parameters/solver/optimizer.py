@@ -336,9 +336,6 @@ def differential_evolution(**kwargs):
     * (<phoebe.parameters.ParameterSet>): ParameterSet of all newly created
         <phoebe.parameters.Parameter> objects.
     """
-    if not conf.devel:
-        raise ImportError("differential_evolution is not fully tested and released.  Use developer mode to test.")
-
     params = _comments_params(**kwargs)
     params += _server_params(**kwargs)
 
@@ -358,7 +355,6 @@ def differential_evolution(**kwargs):
                         'best2exp', 'rand2exp', 'randtobest1bin', 'currenttobest1bin', 'best2bin',
                         'rand2bin', 'rand1bin']
     params += [ChoiceParameter(qualifier='strategy', value=kwargs.get('strategy', 'best1bin'), choices=strategy_choices, description='passed directly to scipy.optimize.differential_evolution.')]
-
 
     params += [IntParameter(qualifier='maxiter', value=kwargs.get('maxiter', 1e6), limits=[1,1e12], description='passed directly to scipy.optimize.differential_evolution.  The maximum number of generations over which the entire population is evolved. The maximum number of function evaluations (with no polishing) is: (maxiter + 1) * popsize * len(x)')]
     params += [IntParameter(qualifier='popsize', value=kwargs.get('popsize', 8), limits=[1,1e4], description='passed directly to scipy.optimize.differential_evolution.  A multiplier for setting the total population size. The population has popsize * len(x) individuals (unless the initial population is supplied via the init keyword)')]
