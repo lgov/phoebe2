@@ -81,12 +81,20 @@ else:
     _can_client = True
 
 try:
-    import celerite as _celerite
+    # prefer celerite2 over celerite
+    import celerite2 as _celerite
 except ImportError:
-    logger.warning("celerite not installed: only required for gaussian processes")
-    _use_celerite = False
+    try:
+        # fallback on celerite
+        import celerite as _celerite
+    except ImportError:
+        logger.warning("neither celerite or celerite2 are installed: only required for gaussian processes")
+        _use_celerite = False
+    else:
+        # _use_celerite will be 1 (for celerite) or 2 (for celerite2)
+        _use_celerite = 1
 else:
-    _use_celerite = True
+    _use_celerite = 2
 
 
 def _get_add_func(mod, func, return_none_if_not_found=False):
@@ -599,15 +607,15 @@ class Bundle(ParameterSet):
         b = cls(data)
 
         version = b.get_value(qualifier='phoebe_version', check_default=False, check_visible=False)
-        phoebe_version_import = StrictVersion(version if version != 'devel' else '2.4.0')
-        phoebe_version_this = StrictVersion(__version__ if __version__ != 'devel' else '2.4.0')
+        phoebe_version_import = StrictVersion(version if version not in ['devel', 'workshop2021'] else '2.4.0')
+        phoebe_version_this = StrictVersion(__version__ if __version__ not in ['devel', 'workshop2021'] else '2.4.0')
 
         logger.debug("importing from PHOEBE v {} into v {}".format(phoebe_version_import, phoebe_version_this))
 
         # update the entry in the PS, so if this is saved again it will have the new version
         b.set_value(qualifier='phoebe_version', value=__version__, check_default=False, check_visible=False, ignore_readonly=True)
 
-        if phoebe_version_import == phoebe_version_this and version != 'devel':
+        if phoebe_version_import == phoebe_version_this and version not in ['devel', 'workshop2021']:
             return b
         elif phoebe_version_import > phoebe_version_this:
             if not import_from_newer:
@@ -899,7 +907,7 @@ class Bundle(ParameterSet):
             # call set_hierarchy to force mass constraints to be rebuilt
             b.set_hierarchy()
 
-        if phoebe_version_import < StrictVersion("2.4.0") or version == 'devel':
+        if phoebe_version_import < StrictVersion("2.4.0") or version in ['devel', 'workshop2021']:
             existing_values_settings = {p.qualifier: p.get_value() for p in b.filter(context='setting').to_list()}
             b.remove_parameters_all(context='setting', **_skip_filter_checks)
             b._attach_params(_setting.settings(**existing_values_settings), context='setting')
@@ -4272,7 +4280,7 @@ class Bundle(ParameterSet):
         # dependency checks
         if not _use_celerite and len(self.filter(context='feature', kind='gaussian_process').features):
             report.add_item(self,
-                            "Gaussian process features attached, but celerite dependency not installed",
+                            "Gaussian process features attached, but neither celerite2 or celerite dependency is installed",
                             [],
                             True, 'run_compute')
 
@@ -5341,6 +5349,8 @@ class Bundle(ParameterSet):
                 if __version__ == "devel":
                     # TODO: can we access the exact branch or commit instead of always using development?
                     dep_phoebe = "https://github.com/phoebe-project/phoebe2/archive/refs/heads/development.zip"
+                elif __version__ == "workshop2021":
+                    dep_phoebe = "https://github.com/phoebe-project/phoebe2/archive/refs/heads/workshop2021.zip"
                 else:
                     dep_phoebe = 'phoebe=={}'.format(__version__)
                 if dep_phoebe not in deps_pip:
@@ -11590,7 +11600,7 @@ class Bundle(ParameterSet):
                         # NOTE: this is already in run_checks_compute, so this error
                         # should never be raised
                         if not _use_celerite:
-                            raise ImportError("gaussian processes require celerite to be installed")
+                            raise ImportError("gaussian processes require celerite2 or celerite to be installed")
 
                         # NOTE: only those exposed in feature.gaussian_process
                         # will be available to the user (we don't allow jitter, for example)
@@ -11605,12 +11615,16 @@ class Bundle(ParameterSet):
                             kind = gp_ps.get_value(qualifier='kernel', **_skip_filter_checks)
 
                             kwargs = {p.qualifier: p.value for p in gp_ps.exclude(qualifier=['kernel', 'enabled']).to_list() if p.is_visible}
+
+                            # TODO: if this fails for celerite2 for "jitter", we should cover that in run_checks_compute
                             gp_kernels.append(gp_kernel_classes.get(kind)(**kwargs))
 
+                        celeriteGPClass = getattr(_celerite, "GP" if _use_celerite == 1 else "GaussianProcess")
+
                         if len(gp_kernels) == 1:
-                            gp_kernel = _celerite.GP(gp_kernels[0])
+                            gp_kernel = celeriteGPClass(gp_kernels[0])
                         else:
-                            gp_kernel = _celerite.GP(_celerite.terms.TermSum(*gp_kernels))
+                            gp_kernel = celeriteGPClass(_celerite.terms.TermSum(*gp_kernels))
 
 
                         ds_ps = self.get_dataset(dataset=ds, **_skip_filter_checks)
