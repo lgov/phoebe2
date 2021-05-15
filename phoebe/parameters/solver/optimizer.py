@@ -327,9 +327,37 @@ def differential_evolution(**kwargs):
     Parallelization support: differential_evolution supports both MPI and multiprocessing, always
     at the solver-level (per-model).
 
-
     Arguments
-    ----------
+    -----------
+    * `compute` (string, optional): compute options to use for the forward
+        model.
+    * `expose_lnprobabilities` (bool, optional, default=False): whether to expose
+        the initial and final lnprobabilities in the solution (will result in 2
+        additional forward model calls)
+    * `fit_parameters` (list, optional, default=[]): parameters (as twigs) to
+        optimize.
+    * `bounds` (list, optional, default=[]):  distribution(s) to use for bounds.
+        For any non-uniform distributions, bounds will be adopted based on the
+        `bounds_sigma` parameter.  Only those in `fit_parameters` will be considered.
+        Any in `fit_parameters` but not in `bounds` will use the limits on the
+        parameter itself as bounds.  Any covariances will be ignored.
+    * `bound_combine` (string, optional, default='first'): Method to use to
+        combine multiple distributions from bounds for the same parameter.
+        first: ignore duplicate entries and take the first in the bounds parameter.
+        and: combine duplicate entries via AND logic, dropping covariances.
+        or: combine duplicate entries via OR logic, dropping covariances.
+    * `bounds_sigma` (int, optional, default=3): sigma-level to use when
+        converting non-uniform distributions for bounds to uniform bounds
+    * `strategy` (string, optional, default='best1bin'): passed directly to
+        scipy.optimize.differential_evolution.
+    * `maxiter` (int, optional, default=1e6): passed directly to
+        scipy.optimize.differential_evolution.  The maximum number of generations
+        over which the entire population is evolved. The maximum number of function
+        evaluations (with no polishing) is: `(maxiter + 1) * popsize * len(x)`
+    * `popsize` (int, optional, default=8): passed directly to
+        scipy.optimize.differential_evolution.  A multiplier for setting the
+        total population size. The population has `popsize * len(x)` individuals
+        (unless the initial population is supplied via the init keyword)
 
     Returns
     --------
@@ -345,7 +373,7 @@ def differential_evolution(**kwargs):
     params += [SelectTwigParameter(qualifier='fit_parameters', value=kwargs.get('fit_parameters', []), choices=[], description='parameters to optimize')]
 
     params += [SelectParameter(qualifier='bounds', value=kwargs.get('bounds', []), choices=[], description='distribution(s) to use for bounds.  For any non-uniform distributions, bounds will be adopted based on the bounds_sigma parameter.  Only those in fit_parameters will be considered.  Any in fit_parameters but not in bounds will use the limits on the parameter itself as bounds.  Any covariances will be ignored.')]
-    params += [ChoiceParameter(visible_if='bounds:<notempty>', qualifier='bounds_combine', value=kwargs.get('bounds_combine', 'first'), choices=['first', 'and', 'or'], description='Method to use to combine multiple distributions from bounds for the same parameter.  irst: ignore duplicate entries and take the first in the bounds parameter. and: combine duplicate entries via AND logic, dropping covariances.  or: combine duplicate entries via OR logic, dropping covariances..')]
+    params += [ChoiceParameter(visible_if='bounds:<notempty>', qualifier='bounds_combine', value=kwargs.get('bounds_combine', 'first'), choices=['first', 'and', 'or'], description='Method to use to combine multiple distributions from bounds for the same parameter.  first: ignore duplicate entries and take the first in the bounds parameter. and: combine duplicate entries via AND logic, dropping covariances.  or: combine duplicate entries via OR logic, dropping covariances.')]
     params += [FloatParameter(visible_if='bounds:<notempty>', qualifier='bounds_sigma', value=kwargs.get('bounds_sigma', 3), limits=(0,10), default_units=u.dimensionless_unscaled, description='sigma-level to use when converting non-uniform distributions for bounds to uniform bounds')]
 
     # params += [SelectParameter(qualifier='priors', value=kwargs.get('priors', []), choices=[], description='distribution(s) to use for priors')]
