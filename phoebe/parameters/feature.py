@@ -107,18 +107,18 @@ def gaussian_process(feature, **kwargs):
     ----------
     * `kernel` (string, optional, default='matern32'): Kernel for the gaussian
         process (see https://celerite.readthedocs.io/en/stable/python/kernel/)
-    * `log_S0` (float, optional, default=0): only applicable if `kernel` is
-        'sho'. Log of the GP parameter S0.
-    * `log_Q` (float, optional, default=0): only applicable if `kernel` is
-        'sho'.  Log of the GP parameter Q.
-    * `log_omega0` (float, optional, default=0): only applicable if `kernel` is
-        'sho'.  Log of the GP parameter omega0.
-    * `log_sigma` (float, optional, default=0): only applicable if `kernel` is
-        'matern32'.  Log of the GP parameter sigma.
-    * `log_rho` (float, optional, default=0): only applicable if `kernel` is
-        'matern32'.  Log of the GP parameter rho.
+    * `S0` (float, optional, default=0): only applicable if `kernel` is
+        'sho'. GP parameter S0.
+    * `Q` (float, optional, default=0): only applicable if `kernel` is
+        'sho'.  GP parameter Q.
+    * `omega0` (float, optional, default=0): only applicable if `kernel` is
+        'sho'.  GP parameter omega0.
+    * `sigma` (float, optional, default=0): only applicable if `kernel` is
+        'matern32'.  GP parameter sigma.
+    * `rho` (float, optional, default=0): only applicable if `kernel` is
+        'matern32'.  GP parameter rho.
     * `eps` (float, optional, default=0): only applicable if `kernel` is
-        'matern32'.  Log of the GP parameter epsilon.
+        'matern32'.  GP parameter epsilon.
 
 
     Returns
@@ -132,15 +132,15 @@ def gaussian_process(feature, **kwargs):
 
     params += [ChoiceParameter(qualifier='kernel', value=kwargs.get('kernel', 'matern32'), choices=['matern32', 'sho'], description='Kernel for the gaussian process (see https://celerite.readthedocs.io/en/stable/python/kernel/)')]
 
-    params += [FloatParameter(visible_if='kernel:sho', qualifier='log_S0', value=kwargs.get('log_S0', 0), default_unit=u.dimensionless_unscaled, description='Log of the GP parameter S0')]
-    params += [FloatParameter(visible_if='kernel:sho', qualifier='log_Q', value=kwargs.get('log_Q', 0), default_unit=u.dimensionless_unscaled, description='Log of the GP parameter Q')]
-    params += [FloatParameter(visible_if='kernel:sho', qualifier='log_omega0', value=kwargs.get('log_omega0', 0), default_unit=u.dimensionless_unscaled, description='Log of the GP parameter omega0')]
+    params += [FloatParameter(visible_if='kernel:sho', qualifier='S0', value=kwargs.get('S0', 0), default_unit=u.dimensionless_unscaled, description='GP parameter S0')]
+    params += [FloatParameter(visible_if='kernel:sho', qualifier='Q', value=kwargs.get('Q', 0), default_unit=u.dimensionless_unscaled, description='GP parameter Q')]
+    params += [FloatParameter(visible_if='kernel:sho', qualifier='omega0', value=kwargs.get('omega0', 0), default_unit=u.dimensionless_unscaled, description='GP parameter omega0')]
 
-    params += [FloatParameter(visible_if='kernel:matern32', qualifier='log_sigma', value=kwargs.get('log_sigma', 0), default_unit=u.dimensionless_unscaled, description='Log of the GP parameter sigma')]
-    params += [FloatParameter(visible_if='kernel:matern32', qualifier='log_rho', value=kwargs.get('log_rho', 0), default_unit=u.dimensionless_unscaled, description='Log of the GP parameter rho')]
+    params += [FloatParameter(visible_if='kernel:matern32', qualifier='sigma', value=kwargs.get('sigma', 0), default_unit=u.dimensionless_unscaled, description='GP parameter sigma')]
+    params += [FloatParameter(visible_if='kernel:matern32', qualifier='rho', value=kwargs.get('rho', 0), default_unit=u.dimensionless_unscaled, description='GP parameter rho')]
     params += [FloatParameter(visible_if='kernel:matern32', qualifier='eps', value=kwargs.get('eps', 0.01), limits=(0,None), default_unit=u.dimensionless_unscaled, description='GP parameter epsilon')]
 
-    # params += [FloatParameter(visible_if='kernel:jitter', qualifier='log_sigma', value=kwargs.get('log_sigma', np.log(0.01)), default_unit=u.dimensionless_unscaled, description='Log of the amplitude of the white noise')]
+    # params += [FloatParameter(visible_if='kernel:jitter', qualifier='sigma', value=kwargs.get('sigma', np.log(0.01)), default_unit=u.dimensionless_unscaled, description='amplitude of the white noise')]
 
     constraints = []
 

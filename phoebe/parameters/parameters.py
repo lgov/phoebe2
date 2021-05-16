@@ -290,8 +290,8 @@ _forbidden_labels += ['primary_width', 'secondary_width',
 _forbidden_labels += ['colat', 'long', 'radius', 'relteff',
                       'radamp', 'freq', 'l', 'm', 'teffext',
                       'spot', 'gaussian_process', 'pulsation',
-                      'kernel', 'log_S0', 'log_Q', 'log_rho',
-                      'log_omega0', 'log_sigma', 'eps'
+                      'kernel', 'S0', 'Q', 'rho',
+                      'omega0', 'sigma', 'eps'
                       ]
 
 # from figure:

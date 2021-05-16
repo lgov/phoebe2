@@ -11604,7 +11604,8 @@ class Bundle(ParameterSet):
                         # will be available to the user (we don't allow jitter, for example)
                         gp_kernel_classes = {'matern32': _celerite.terms.Matern32Term,
                                               'sho': _celerite.terms.SHOTerm,
-                                              'jitter': _celerite.terms.JitterTerm}
+                                            #   'jitter': _celerite.terms.JitterTerm
+                                              }
 
                         # build the celerite GP object from the enabled GP features attached to this dataset
                         gp_kernels = []
@@ -11640,7 +11641,7 @@ class Bundle(ParameterSet):
                             # TODO: do we need to inflate sigmas by lnf?
                             if len(ds_sigmas) != len(ds_x):
                                 raise ValueError("gaussian_process requires sigma of same length as {}".format(xqualifier))
-                            gp_kernel.compute(ds_x, ds_sigmas, check_sorted=True)
+                            gp_kernel.compute(ds_x, yerr=ds_sigmas, check_sorted=True)
 
                             residuals, model_y_dstimes = self.calculate_residuals(model=model, dataset=ds, component=ds_comp, return_interp_model=True, as_quantity=False, consider_gaussian_process=False)
                             gp_y = gp_kernel.predict(residuals, ds_x, return_cov=False)
