@@ -7292,7 +7292,7 @@ static PyObject *mesh_radiosity_problem_nbody_convex(
       break;
 
       case "Horvat"_hash32:
-      	success = solve_radiosity_equation_Horvat_nbody(Fmat, R, F0, F);
+        success = solve_radiosity_equation_Horvat_nbody(Fmat, R, F0, F);
       break;
 
       default:
@@ -9644,34 +9644,43 @@ static PyObject *wd_readdata(PyObject *self, PyObject *args, PyObject *keywds) {
   //
   // Reading
   //
-	
+
   int len[2] = {
-		wd_atm::read_data<double, wd_atm::N_planck>(PyString_AsString(ofilename_planck), planck_table),
-		wd_atm::read_data<double, wd_atm::N_atm>(PyString_AsString(ofilename_atm), atm_table)
-	};
-	
+    wd_atm::read_data<double, wd_atm::N_planck>(PyString_AsString(ofilename_planck), planck_table),
+    wd_atm::read_data<double, wd_atm::N_atm>(PyString_AsString(ofilename_atm), atm_table)
+  };
+
   //
   // Checks
   //
   std::string err_msg;
-  
+
   if (len[0] < 0)
     err_msg = "\nProblem opening the planck file:"_s + PyString_AsString(ofilename_planck);
   else if (len[0] != wd_atm::N_planck)
-    err_msg = "\nWrong size read, len= "_s + std::to_string(len[0]) + " len_expected="_s + std::to_string(wd_atm::N_planck);
-  
+    err_msg = "\nWrong size read, len= "_s + std::to_string(len[0]) +
+              " len_expected="_s + std::to_string(wd_atm::N_planck);
+
   if (len[1] < 0)
     err_msg += "\nProblem opening the atm file:"_s + PyString_AsString(ofilename_atm);
   else if (len[1] != wd_atm::N_atm)
-    err_msg += "\nWrong size read, len= "_s + std::to_string(len[1]) + " len_expected="_s + std::to_string(wd_atm::N_atm);
- 
- 
+    err_msg += "\nWrong size read, len= "_s + std::to_string(len[1]) +
+              " len_expected="_s + std::to_string(wd_atm::N_atm);
+
+
   if (err_msg.size() != 0) {
     raise_exception(fname + "::Problem reading data." + err_msg);
     delete [] planck_table;
     delete [] atm_table;
     return NULL;
   }
+
+  //
+  // Do transpose of atm table
+  //
+
+  wd_atm::transpose_atm_table(atm_table);
+
 
   //
   // Returning results
@@ -10368,10 +10377,10 @@ static PyObject *interp(PyObject *self, PyObject *args, PyObject *keywds) {
 
   #if defined(USING_SimpleNewFromData)
   double *R = new double [Nr];
-	PyObject *o_ret = PyArray_SimpleNewFromData(2, dims, NPY_DOUBLE, R);
+  PyObject *o_ret = PyArray_SimpleNewFromData(2, dims, NPY_DOUBLE, R);
   PyArray_ENABLEFLAGS((PyArrayObject *)o_ret, NPY_ARRAY_OWNDATA);
   #else
-	PyObject *o_ret = PyArray_SimpleNew(2, dims, NPY_DOUBLE);
+  PyObject *o_ret = PyArray_SimpleNew(2, dims, NPY_DOUBLE);
   double *R = (double *) PyArray_DATA((PyArrayObject *)o_ret);
   #endif
 
