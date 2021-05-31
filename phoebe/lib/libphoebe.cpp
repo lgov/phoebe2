@@ -9701,7 +9701,7 @@ static PyObject *wd_readdata(PyObject *self, PyObject *args, PyObject *keywds) {
 
   Python:
 
-    planck_table = wd_readdata_filter(filename_planck, filename_atm, ifil)
+    dicts = wd_readdata_filter(filename_planck, filename_atm, ifil)
 
   with arguments
 
@@ -9717,6 +9717,25 @@ static PyObject *wd_readdata(PyObject *self, PyObject *args, PyObject *keywds) {
     atm_table: coefficients for calculating light intensity with atmospheres for ith filter
       1-rank numpy array of floats
 
+  Minimalistic example:
+
+    import libphoebe as lph
+
+    planck="..../wd/atmcofplanck.dat"
+    atm="..../wd/atmcof.dat"
+
+    ifil = 1
+
+    d = lph.wd_readdata_filter(bytes(planck, encoding='utf8'), bytes(atm, encoding='utf8'), ifil)
+
+    print(d.keys())
+    for k in d.keys(): print(len(d[k]))
+
+    Output:
+
+    dict_keys(['planck_table', 'atm_table'])
+    50
+    10032
 */
 
 static PyObject *wd_readdata_filter(PyObject *self, PyObject *args, PyObject *keywds) {
@@ -9914,11 +9933,13 @@ static PyObject *wd_planckint(PyObject *self, PyObject *args, PyObject *keywds) 
     planck="..../wd/atmcofplanck.dat"
     atm="..../wd/atmcof.dat"
 
-    d = lph.wd_readdata(planck, atm)
+    d = lph.wd_readdata(bytes(planck, encoding='utf8'), bytes(atm, encoding='utf8'))
 
     temps = np.array([1000., 2000.])
 
-    print lph.wd_planckint(temps, 1, d["planck_table"])
+    ifil = 1
+
+    print(lph.wd_planckint(temps, ifil, d["planck_table"]))
 
     returns:
 
@@ -10061,9 +10082,10 @@ static PyObject *wd_planckint(PyObject *self, PyObject *args, PyObject *keywds) 
 
     planck="..../wd/atmcofplanck.dat"
     atm="..../wd/atmcof.dat"
+
     ifil = 1
 
-    d = lph.wd_readdata_filter(planck, atm, ifil)
+    d = lph.wd_readdata_filter(bytes(planck, encoding='utf8'), bytes(atm, encoding='utf8'), ifil)
 
     temps = np.array([1000., 2000.])
 
