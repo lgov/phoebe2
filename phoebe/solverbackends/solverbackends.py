@@ -40,12 +40,7 @@ except ImportError:
 else:
     _use_dynesty = True
 
-try:
-    from tqdm import tqdm as _tqdm
-except ImportError:
-    _has_tqdm = False
-else:
-    _has_tqdm = True
+from tqdm import tqdm as _tqdm
 
 try:
     from astropy.timeseries import BoxLeastSquares as _BoxLeastSquares
@@ -236,7 +231,7 @@ def _get_combined_lc(b, datasets, combine, phase_component=None, mask=True, norm
 
         if len(ds_sigmas) == 0:
             # TODO: option for this???
-            ds_sigmas = 0.001*fluxes.mean()*np.ones(len(fluxes))
+            ds_sigmas = np.full_like(ds_fluxes, fill_value=0.001*ds_fluxes.mean())
 
         if normalize:
             if combine == 'max':
@@ -1184,6 +1179,7 @@ class EmceeBackend(BaseSolverBackend):
         solution_params += [_parameters.ArrayParameter(qualifier='autocorr_times', value=[], readonly=True, description='measured autocorrelation time with shape (len(fitted_twigs)) before applying burnin/thin.  To access with a custom burnin/thin, see phoebe.helpers.get_emcee_object_from_solution')]
         solution_params += [_parameters.IntParameter(qualifier='burnin', value=0, limits=(0,1e6), description='burnin to use when adopting/plotting the solution')]
         solution_params += [_parameters.IntParameter(qualifier='thin', value=1, limits=(1,1e6), description='thin to use when adopting/plotting the solution')]
+        solution_params += [_parameters.IntParameter(qualifier='nlags', value=1, limit=(1,1e6), description='number of lags to use when computing/plotting the autocorrelation function.  If 0, will default to niters-burnin.')]
         solution_params += [_parameters.FloatParameter(qualifier='lnprob_cutoff', value=-np.inf, default_unit=u.dimensionless_unscaled, description='lower limit cuttoff on lnproabilities to use when adopting/plotting the solution')]
 
         solution_params += [_parameters.FloatParameter(qualifier='progress', value=0, limits=(0,100), default_unit=u.dimensionless_unscaled, advanced=True, readonly=True, description='percentage of requested iterations completed')]
@@ -1213,6 +1209,7 @@ class EmceeBackend(BaseSolverBackend):
                      {'qualifier': 'autocorr_times', 'value': autocorr_times},
                      {'qualifier': 'burnin', 'value': burnin},
                      {'qualifier': 'thin', 'value': thin},
+                     {'qualifier': 'nlags', 'value': nlags},
                      {'qualifier': 'progress', 'value': progress}]
 
             if expose_failed:
@@ -1293,6 +1290,7 @@ class EmceeBackend(BaseSolverBackend):
 
             init_from = kwargs.get('init_from')
             init_from_combine = kwargs.get('init_from_combine')
+            init_from_requires = kwargs.get('init_from_requires')
             priors = kwargs.get('priors')
             priors_combine = kwargs.get('priors_combine')
 
@@ -1300,6 +1298,7 @@ class EmceeBackend(BaseSolverBackend):
 
             burnin_factor = kwargs.get('burnin_factor')
             thin_factor = kwargs.get('thin_factor')
+            nlags_factor = kwargs.get('nlags_factor')
 
             solution_ps = kwargs.get('solution_ps')
             solution = kwargs.get('solution')
@@ -1316,17 +1315,21 @@ class EmceeBackend(BaseSolverBackend):
 
                 expose_failed = kwargs.get('expose_failed')
 
-                # TODO: implement within_distribution_collection=None option to automatically & by any uniforms/deltas in other dc
-                dc, params_uniqueids = b.get_distribution_collection(distribution=init_from,
-                                                                     combine=init_from_combine,
-                                                                     include_constrained=False,
-                                                                     within_parameter_limits=True,
-                                                                     keys='uniqueid')
-
+                logger.info("initializing {} walker positions".format(nwalkers))
+                dc, params_uniqueids, p0 = b.sample_distribution_collection(distribution=init_from,
+                                                                            combine=init_from_combine,
+                                                                            include_constrained=False,
+                                                                            require_limits='limits' in init_from_requires,
+                                                                            require_checks=compute if 'checks' in init_from_requires else False,
+                                                                            require_compute=compute if 'compute' in init_from_requires else False,
+                                                                            require_priors='priors@{}'.format(solver) if 'priors' in init_from_requires else False,
+                                                                            sample_size=nwalkers,
+                                                                            progressbar=kwargs.get('progressbar', False),
+                                                                            return_dc_uniqueids_array=True,
+                                                                            pool=pool
+                                                                            )
 
                 wrap_central_values = _wrap_central_values(b, dc, params_uniqueids)
-
-                p0 = dc.sample(size=nwalkers).T
                 params_units = [dist.unit.to_string() for dist in dc.dists]
 
                 continued_failed_samples = {}
@@ -1421,7 +1424,7 @@ class EmceeBackend(BaseSolverBackend):
             sargs = {}
             sargs['iterations'] = niters
             sargs['progress'] = kwargs.get('progressbar', False)
-            sargs['skip_initial_state_check'] = False
+            sargs['skip_initial_state_check'] = continue_from is not 'None' or 'compute' in init_from_requires
 
 
             logger.debug("sampler.sample(p0, {})".format(sargs))
@@ -1453,9 +1456,13 @@ class EmceeBackend(BaseSolverBackend):
                         thin = int(thin_factor * np.nanmin(autocorr_times))
                         if thin==0:
                             thin = 1
+                        nlags = int(nlags_factor * np.nanmax(autocorr_times))
+                        if nlags < sampler.iteration - burnin:
+                            nlags = sampler.iteration - burnin
                     else:
                         burnin =0
                         thin = 1
+                        nlags = 1
 
                     if progress_every_niters > 0:
                         logger.info("emcee: saving output from iteration {}".format(sampler.iteration))
@@ -1958,7 +1965,7 @@ class _ScipyOptimizeBaseBackend(BaseSolverBackend):
                      'solution': _solution}
 
         global _use_progressbar
-        if _has_tqdm and kwargs.get('progressbar', False):
+        if kwargs.get('progressbar', False):
             global _minimize_iter
             _minimize_iter = 0
             global _minimize_pbar
@@ -2093,7 +2100,7 @@ class Differential_EvolutionBackend(BaseSolverBackend):
             params = []
             fitted_units = []
             for twig in fit_parameters:
-                p = b.get_parameter(twig=twig, context=['component', 'dataset'], **_skip_filter_checks)
+                p = b.get_parameter(twig=twig, context=['component', 'dataset', 'feature', 'system'], **_skip_filter_checks)
                 params.append(p)
                 params_uniqueids.append(p.uniqueid)
                 params_twigs.append(p.twig)

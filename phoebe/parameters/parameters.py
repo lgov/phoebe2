@@ -253,7 +253,7 @@ _forbidden_labels += ['enabled', 'dynamics_method', 'ltte', 'comments',
                       ]
 
 # from solver:
-_forbidden_labels += ['nwalkers', 'niters', 'priors', 'init_from',
+_forbidden_labels += ['nwalkers', 'niters', 'priors', 'priors_requires', 'init_from', 'init_from_requires',
                       'lc_datasets', 'rv_datasets', 'lc_combine',
                       'phase_bin', 'phase_nbins',
                       'algorithm', 'duration', 'minimum_n_cycles', 'frequency_factor',
@@ -264,7 +264,7 @@ _forbidden_labels += ['nwalkers', 'niters', 'priors', 'init_from',
                       'priors_combine', 'maxiter', 'maxfev', 'adaptive',
                       'xatol', 'fatol', 'bounds', 'bounds_combine', 'bounds_sigma',
                       'strategy', 'popsize', 'continue_from', 'init_from_combine',
-                      'burnin_factor', 'thin_factor', 'progress_every_niters',
+                      'burnin_factor', 'thin_factor', 'nlags_factor', 'progress_every_niters',
                       'nlive', 'maxcall', 'lc_geometry', 'rv_geometry', 'lc_periodogram', 'rv_periodogram', 'ebai',
                       'nelder_mead', 'differential_evolution', 'cg', 'powell', 'emcee', 'dynesty']
 
@@ -276,7 +276,7 @@ _forbidden_labels += ['primary_width', 'secondary_width',
                       'fitted_uniqueids', 'fitted_twigs', 'fitted_values', 'fitted_units',
                       'adopt_parameters', 'adopt_distributions', 'distributions_convert', 'distributions_bins',
                       'failed_samples', 'lnprobabilities', 'acceptance_fractions',
-                      'autocorr_time', 'burnin', 'thin', 'lnprob_cutoff',
+                      'autocorr_time', 'burnin', 'thin', 'lnprob_cutoff', 'nlags',
                       'progress',
                       'period_factor', 'power',
                       'nlive', 'niter', 'ncall', 'eff', 'samples', 'samples_id', 'samples_it', 'samples_u',
@@ -2917,7 +2917,7 @@ class ParameterSet(object):
 
         return _return(params, force_ps, method, mindex)
 
-    def exclude(self, twig=None, check_visible=True, check_default=True, **kwargs):
+    def exclude(self, twig=None, check_visible=False, check_default=False, **kwargs):
         """
         Exclude the results from this filter from the current
         <phoebe.parameters.ParameterSet>.
@@ -2936,12 +2936,12 @@ class ParameterSet(object):
             into any of the meta-tags.  Example: instead of
             `b.filter(context='component', component='starA')`, you
             could do `b.filter('starA@component')`.
-        * `check_visible` (bool, optional, default=True): whether to hide invisible
-            parameters.  These are usually parameters that do not
+        * `check_visible` (bool, optional, default=False): whether to NOT exclude
+            invisible parameters.  These are usually parameters that do not
             play a role unless the value of another parameter meets
             some condition.
-        * `check_default` (bool, optional, default=True): whether to exclude parameters which
-            have a _default tag (these are parameters which solely exist
+        * `check_default` (bool, optional, default=False): whether to NOT
+            exclude parameters which have a _default tag (these are parameters which solely exist
             to provide defaults for when new parameters or datasets are
             added and the parameter needs to be copied appropriately).
             Defaults to True.
@@ -3190,13 +3190,7 @@ class ParameterSet(object):
 
         param = self.get_parameter(twig=twig, **kwargs)
 
-        if param.qualifier in kwargs.keys():
-            # then we have an "override" value that was passed, and we should
-            # just return that.
-            # Example b.get_value('teff', teff=6000) returns 6000
-            return kwargs.get(param.qualifier)
-
-        return param.get_quantity(unit=unit, t=t)
+        return param.get_quantity(unit=unit, t=t, **{k: v for k,v in kwargs.items() if k==param.qualifier})
 
     def set_quantity(self, twig=None, value=None, **kwargs):
         """
@@ -5012,14 +5006,14 @@ class ParameterSet(object):
                     # but in order to handle the possibility of indexes in array parameters
                     # we need to find the matches in adopt_uniqueids which includes the index
                     if kwargs.get('y', None):
-                        y = kwargs.get('y')
+                        ys = kwargs.get('y')
                         if isinstance(ys, str):
                             ys = [ys]
 
                         # ys are currently assumed to twigs (with or without indices)
                         # we need a list of uniqueids, including indices when necessary
                         def _uniqueids_for_y(fitted_ps, twig=None):
-                            y, index = _extract_index_from_string(y)
+                            y, index = _extract_index_from_string(twig)
                             p = fitted_ps.get_parameter(twig=y, **_skip_filter_checks)
                             if index is None:
                                 if p.__class__.__name__ == 'FloatArrayParameter':
@@ -5082,6 +5076,85 @@ class ParameterSet(object):
 
                             # TODO: support for c = twig/lnprobabilities
                             return_ += [kwargs]
+                elif style in ['acf', 'acf_lnprobabilities']:
+                    nlags = ps.get_value(qualifier='nlags', nlags=kwargs.get('nlags', None), **_skip_filter_checks)
+
+                    kwargs['plot_package'] = 'autofig'
+                    if 'parameters' in kwargs.keys():
+                        raise ValueError("cannot currently plot {} while providing parameters.  Pass or set adopt_parameters to plot a subset of available parameters".format(style))
+                    kwargs['autofig_method'] = 'plot'
+                    kwargs.setdefault('marker', 'None')
+                    kwargs.setdefault('linestyle', 'solid')
+
+                    fitted_uniqueids = self._bundle.get_value(qualifier='fitted_uniqueids', context='solution', solution=ps.solution, **_skip_filter_checks)
+                    # fitted_twigs = self._bundle.get_value(qualifier='fitted_twigs', context='solution', solution=ps.solution, **_skip_filter_checks)
+                    fitted_units = self._bundle.get_value(qualifier='fitted_units', context='solution', solution=ps.solution, **_skip_filter_checks)
+                    fitted_ps = self._bundle.filter(uniqueid=list(fitted_uniqueids), **_skip_filter_checks)
+
+                    lnprobabilities_proc, samples_proc = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, 1, lnprob_cutoff, adopt_inds, flatten=False)
+                    if nlags == 0:
+                        nlags = samples_proc.shape[0]
+                    acf_proc, ci_b_proc, ci_proc = _helpers.process_acf(lnprobabilities_proc, samples_proc, nlags)
+                    # acf_proc [parameter, nwalkers, lag]
+                    # acf_b_proc [parameters, nwalkers, lag]
+                    # ci_proc (float)
+
+                    c = kwargs.get('c', None)
+                    kwargs_orig = _deepcopy(kwargs)
+
+                    plot_uniqueids = adopt_uniqueids if style=='acf' else [0]
+                    for plot_uniqueid in plot_uniqueids:
+                        if style=='acf':
+                            parameter_ind = list(adopt_uniqueids).index(plot_uniqueid)
+                            _, index = _extract_index_from_string(plot_uniqueid)
+                            yparam = fitted_ps.get_parameter(uniqueid=plot_uniqueid, **_skip_filter_checks)
+                        else:
+                            parameter_ind = -1  # to force the lnprobability in position 0
+
+                        nwalkers = acf_proc[parameter_ind+1].shape[0]
+                        for walker_ind in range(nwalkers):
+                            kwargs = _deepcopy(kwargs_orig)
+
+                            if c is None:
+                                pass
+                            else:
+                                # assume named color?
+                                kwargs['c'] = c
+
+                            # this needs to be the unflattened version
+                            acf_y = acf_proc[parameter_ind+1][walker_ind, :]
+                            x = np.arange(len(acf_y), dtype=float)
+                            kwargs['x'] = x
+                            kwargs['xlabel'] = 'lag (nlags={}, burnin={}, lnprob_cutoff={})'.format(nlags, burnin, lnprob_cutoff)
+
+                            kwargs['y'] = acf_y
+                            kwargs['ylabel'] = 'normalized autocorrelation ({})'.format('lnprobabilities' if style=='acf_lnprobabilities' else _corner_twig(yparam, index=index))
+
+                            ci_b = ci_b_proc[parameter_ind+1][walker_ind, :]
+                            ci_b_fb = {'plot_package': 'autofig',
+                                       'autofig_method': 'fill_between',
+                                       'color': 'k',
+                                       'alpha': 0.5 / nwalkers,
+                                       'x': x,
+                                       'y':np.array([-1*ci_b,ci_b]).T}
+
+                            return_ += [kwargs, ci_b_fb]
+
+                        axhline_u =  {'plot_package': 'autofig',
+                                      'autofig_method': 'plot',
+                                      'color': 'k',
+                                      'linestyle': 'dashed',
+                                      'axhline': True,
+                                      'y': ci_proc}
+                        axhline_l =  {'plot_package': 'autofig',
+                                      'autofig_method': 'plot',
+                                      'color': 'k',
+                                      'linestyle': 'dashed',
+                                      'axhline': True,
+                                      'y': -ci_proc}
+
+                        return_ += [axhline_u, axhline_l]
+
                 else:
                     raise NotImplementedError()
 
@@ -5715,7 +5788,7 @@ class ParameterSet(object):
 
                 elif plot_package == 'autofig':
                     y = plot_kwargs.get('y', [])
-                    axvline = plot_kwargs.pop('axvline', False)
+                    axvline = plot_kwargs.pop('axvline', False) or plot_kwargs.pop('axhline', False)
                     if axvline or (isinstance(y, u.Quantity) and isinstance(y.value, float)) or (hasattr(y, 'value') and isinstance(y.value, float)):
                         pass
                     elif not len(y):
@@ -9418,8 +9491,6 @@ class FloatParameter(Parameter):
         types.  See the documentation of <phoebe.parameters.FloatParameter.get_quantity>
         for full details.
         """
-        default = super(FloatParameter, self).get_value(**kwargs)
-        if default is not None: return self._check_type(default)
         quantity = self.get_quantity(unit=unit, t=t,
                                      **kwargs)
         if hasattr(quantity, 'value'):
@@ -9460,9 +9531,8 @@ class FloatParameter(Parameter):
         default = super(FloatParameter, self).get_value(**kwargs) # <- note this is calling get_value on the Parameter object
         if default is not None:
             value = self._check_type(default)
-            if isinstance(default, u.Quantity):
-                return value
-            return value * self.default_unit
+            if not isinstance(value, u.Quantity):
+                value = value * self.default_unit
         else:
             value = self._value
 
@@ -9551,6 +9621,12 @@ class FloatParameter(Parameter):
     def _check_type(self, value):
         # we do this separately so that FloatArrayParameter can keep this set_value
         # and just subclass _check_type
+        if isinstance(value, tuple) and len(value)==2 and (isinstance(value[0], float) or isinstance(value[0], int)):
+            if isinstance(value[1], str):
+                value = value[0] * u.Unit(value[1])
+            elif isinstance(value[1], u.Unit):
+                value = value[0] * value[1]
+
         if isinstance(value, u.Quantity):
             if not (isinstance(value.value, float) or isinstance(value.value, int)):
                 raise ValueError("value could not be cast to float")
