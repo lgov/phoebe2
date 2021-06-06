@@ -32,6 +32,7 @@ from fnmatch import fnmatch
 from copy import deepcopy as _deepcopy
 import readline
 import numpy as np
+from scipy.stats import norm as _norm
 
 import json
 # try:
@@ -3710,8 +3711,15 @@ class ParameterSet(object):
             raise NotImplementedError("calculate_residuals not implemented for dataset with kind='{}' (model={}, dataset={}, component={})".format(dataset_kind, model, dataset, component))
 
 
-        dataset_param = dataset_ps.get_parameter(qualifier, component=component, **_skip_filter_checks)
-        model_param = model_ps.get_parameter(qualifier, **_skip_filter_checks)
+        dataset_param_ps = dataset_ps.filter(qualifier=qualifier, component=component, **_skip_filter_checks)
+        if len(dataset_param_ps.to_list()) > 1:
+            raise ValueError("filter (dataset={}, qualifier={}, component={}) resulted in more than one parameter".format(dataset_ps.dataset, qualifier, component))
+        elif len(dataset_param_ps.to_list()) == 0:
+            raise ValueError("filter (dataset={}, qualifier={}, component={}) resulted in no parameters".format(dataset_ps.dataset, qualifier, component))
+        else:
+            dataset_param = dataset_param_ps.to_list()[0]
+        dataset_param = dataset_ps.get_parameter(qualifier=qualifier, component=component, **_skip_filter_checks)
+        model_param = model_ps.get_parameter(qualifier=qualifier, **_skip_filter_checks)
 
         # TODO: do we need to worry about conflicting units?
         # NOTE: this should automatically handle interpolating in phases, if necessary
@@ -3729,6 +3737,22 @@ class ParameterSet(object):
             else:
                 return residuals
 
+        if not len(dataset_param.get_value()) == len(times):
+            if len(dataset_param.get_value())==0:
+                # then the dataset was empty, so let's just return an empty array
+                if return_interp_model:
+                    if as_quantity:
+                        return np.asarray([]) * dataset_param.default_unit, np.asarray([]) * dataset_param.default_unit
+                    else:
+                        return np.asarray([]), np.asarray([])
+                else:
+                    if as_quantity:
+                        return np.asarray([]) * dataset_param.default_unit
+                    else:
+                        return np.asarray([])
+            else:
+                raise ValueError("{}@{}@{} and {}@{}@{} do not have the same length, cannot compute residuals".format(qualifier, component, dataset, 'times', component, dataset))
+
         mask_enabled = dataset_ps.get_value(qualifier='mask_enabled', default=False, mask_enabled=mask_enabled, **_skip_filter_checks)
         if mask_enabled:
             mask_phases = dataset_ps.get_value(qualifier='mask_phases', mask_phases=mask_phases, **_skip_filter_checks)
@@ -3742,15 +3766,6 @@ class ParameterSet(object):
 
                 times = times[inds]
 
-        elif not len(dataset_param.get_value()) == len(times):
-            if len(dataset_param.get_value())==0:
-                # then the dataset was empty, so let's just return an empty array
-                if as_quantity:
-                    return np.asarray([]) * dataset_param.default_unit
-                else:
-                    return np.asarray([])
-            else:
-                raise ValueError("{}@{}@{} and {}@{}@{} do not have the same length, cannot compute residuals".format(qualifier, component, dataset, 'times', component, dataset))
 
         if dataset_param.default_unit != model_param.default_unit:
             raise ValueError("model and dataset do not have the same default_unit, cannot interpolate")
@@ -4917,10 +4932,12 @@ class ParameterSet(object):
                 styles = [styles]
 
             return_ = []
-            for style in styles:
-                kwargs = _deepcopy(kwargs)
+            c = kwargs.get('c', None)
+            kwargs_orig = _deepcopy(kwargs)
 
+            for style in styles:
                 if style in ['corner', 'failed']:
+                    kwargs = _deepcopy(kwargs_orig)
                     kwargs['plot_package'] = 'distl'
                     if 'parameters' in kwargs.keys() and style=='failed':
                         raise ValueError("cannot currently plot failed_samples while providing parameters.  Pass or set adopt_parameters to plot a subset of available parameters")
@@ -4936,11 +4953,13 @@ class ParameterSet(object):
 
                     return_ += [kwargs]
 
-                elif style in ['lnprobability', 'lnprob', 'lnprobabilities']:
-                    kwargs['plot_package'] = 'autofig'
-                    kwargs['autofig_method'] = 'plot'
-                    kwargs.setdefault('marker', 'None')
-                    kwargs.setdefault('linestyle', 'solid')
+                elif style in ['lnprobability', 'lnprob', 'lnprobabilities', 'lnprobabilities_spread', 'spread_lnprobabilities']:
+                    # official style: lnprobabilities, lnprobabilities_spread
+                    kwargs_style = _deepcopy(kwargs_orig)
+                    kwargs_style['plot_package'] = 'autofig'
+                    kwargs_style['autofig_method'] = 'plot'
+                    kwargs_style.setdefault('marker', 'None')
+                    kwargs_style.setdefault('linestyle', 'solid')
 
                     lnprobabilities_proc, samples_proc = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, thin, -np.inf, adopt_inds, flatten=False)
 
@@ -4948,52 +4967,78 @@ class ParameterSet(object):
                     lnprobabilities_proc = _deepcopy(lnprobabilities_proc)
                     lnprobabilities_proc[lnprobabilities_proc < lnprob_cutoff] = np.nan
 
-                    c = kwargs.get('c', None)
                     if c is not None:
                         fitted_uniqueids = self._bundle.get_value(qualifier='fitted_uniqueids', context='solution', solution=ps.solution, **_skip_filter_checks)
                         fitted_ps = self._bundle.filter(uniqueid=list(fitted_uniqueids), **_skip_filter_checks)
                         _, samples_proc_all = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, thin, -np.inf, flatten=False)
 
-                    kwargs_orig = _deepcopy(kwargs)
-                    for walker_ind, lnp in enumerate(lnprobabilities_proc.T):
-                        if not np.any(np.isfinite(lnp)):
-                            continue
 
-                        if np.all(np.isnan(lnp)):
-                            continue
+                    kwargs_style['x'] = np.arange(lnprobabilities_proc.shape[0], dtype=float)*thin+burnin
+                    kwargs_style['xlabel'] = 'iteration (burnin={}, thin={})'.format(burnin, thin)
+                    kwargs_style['ylabel'] = 'lnprobability' if lnprob_cutoff==-np.inf else 'lnprobability (lnprob_cutoff={})'.format(lnprob_cutoff)
 
-                        kwargs = _deepcopy(kwargs_orig)
-                        kwargs['x'] = np.arange(len(lnp), dtype=float)*thin+burnin
-                        kwargs['xlabel'] = 'iteration (burnin={}, thin={})'.format(burnin, thin)
-                        kwargs['y'] = lnp
-                        kwargs['ylabel'] = 'lnprobability' if lnprob_cutoff==-np.inf else 'lnprobability (lnprob_cutoff={})'.format(lnprob_cutoff)
 
-                        if c is None:
-                            pass
-                        elif len(fitted_ps.filter(twig=c, **_skip_filter_checks).to_list()):
-                            match_params = fitted_ps.filter(twig=c, **_skip_filter_checks)
-                            if len(match_params) > 1:
-                                raise ValueError("c={} matches more than one valid parameter ({})".format(c, match_params.twigs))
-                            match_param = match_params.get_parameter()
-                            # TODO: allow to plot from outside adopt_parameters?
-                            match_ind = list(fitted_uniqueids).index(match_param.uniqueid)
-                            kwargs['c'] = samples_proc_all[:, walker_ind, match_ind]
-                            kwargs['clabel'] = match_param.twig
-                            kwargs['cqualifier'] = match_param.qualifier
-                        else:
-                            # assume named color?
-                            kwargs['c'] = c
+                    if 'spread' in style:
+                        kwargs = _deepcopy(kwargs_style)
 
-                        # TODO: support for c = twig
-                        return_ += [kwargs]
+                        if c is not None:
+                            kwargs['c'] = c if c not in ['lnprobablities'] + fitted_ps.qualifiers and '@' not in c else 'black'
+                        kwargs.setdefault('c', 'black')
+                        kwargs['y'] = np.median(lnprobabilities_proc, axis=1)
 
-                elif style in ['trace', 'walks']:
-                    kwargs['plot_package'] = 'autofig'
+                        spread_kwargs = _deepcopy(kwargs)
+                        sigma = kwargs.get('spread_sigma', 1)
+                        bounds = np.percentile(lnprobabilities_proc, 100 * _norm.cdf([-sigma, 0, sigma]), axis=1)
+                        spread_kwargs['autofig_method'] = 'fill_between'
+                        spread_kwargs['y'] = bounds.T
+                        spread_kwargs['alpha'] = 0.3
+                        return_ += [kwargs, spread_kwargs]
+
+                    else:
+                        for walker_ind, lnp in enumerate(lnprobabilities_proc.T):
+                            if not np.any(np.isfinite(lnp)):
+                                continue
+
+                            if np.all(np.isnan(lnp)):
+                                continue
+
+                            kwargs = _deepcopy(kwargs_style)
+
+                            kwargs['y'] = lnp
+
+                            if c is None:
+                                pass
+                            elif c == 'lnprobabilities':
+                                # we only need to get this once and can re-use it per-parameter/walker
+                                kwargs['c'] = lnprobabilities_proc[:, walker_ind]
+                                kwargs['clabel'] = _plural_to_singular_get(c)
+                                kwargs['cqualifier'] = c
+                            elif len(fitted_ps.filter(twig=c, **_skip_filter_checks).to_list()):
+                                match_params = fitted_ps.filter(twig=c, **_skip_filter_checks)
+                                if len(match_params) > 1:
+                                    raise ValueError("c={} matches more than one valid parameter ({})".format(c, match_params.twigs))
+                                match_param = match_params.get_parameter()
+                                # TODO: allow to plot from outside adopt_parameters?
+                                match_ind = list(fitted_uniqueids).index(match_param.uniqueid)
+                                kwargs['c'] = samples_proc_all[:, walker_ind, match_ind]
+                                kwargs['clabel'] = match_param.twig
+                                kwargs['cqualifier'] = match_param.qualifier
+                            else:
+                                # assume named color?
+                                kwargs['c'] = c
+
+                            # TODO: support for c = twig
+                            return_ += [kwargs]
+
+                elif style in ['trace', 'walks', 'trace_spread', 'spread_trace']:
+                    # official styles: trace, trace_spread
+                    kwargs_style = _deepcopy(kwargs_orig)
+                    kwargs_style['plot_package'] = 'autofig'
                     if 'parameters' in kwargs.keys():
                         raise ValueError("cannot currently plot {} while providing parameters.  Pass or set adopt_parameters to plot a subset of available parameters".format(style))
-                    kwargs['autofig_method'] = 'plot'
-                    kwargs.setdefault('marker', 'None')
-                    kwargs.setdefault('linestyle', 'solid')
+                    kwargs_style['autofig_method'] = 'plot'
+                    kwargs_style.setdefault('marker', 'None')
+                    kwargs_style.setdefault('linestyle', 'solid')
 
                     fitted_uniqueids = self._bundle.get_value(qualifier='fitted_uniqueids', context='solution', solution=ps.solution, **_skip_filter_checks)
                     # fitted_twigs = self._bundle.get_value(qualifier='fitted_twigs', context='solution', solution=ps.solution, **_skip_filter_checks)
@@ -5005,8 +5050,8 @@ class ParameterSet(object):
                     # allow user override of which parameter(s) to include
                     # but in order to handle the possibility of indexes in array parameters
                     # we need to find the matches in adopt_uniqueids which includes the index
-                    if kwargs.get('y', None):
-                        ys = kwargs.get('y')
+                    if kwargs_orig.get('y', None):
+                        ys = kwargs_orig.get('y')
                         if isinstance(ys, str):
                             ys = [ys]
 
@@ -5030,61 +5075,81 @@ class ParameterSet(object):
                     else:
                         plot_uniqueids = adopt_uniqueids
 
-                    c = kwargs.get('c', None)
                     if c is not None:
                         _, samples_proc_all = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, thin, lnprob_cutoff, flatten=False)
-                    kwargs_orig = _deepcopy(kwargs)
+
                     for plot_uniqueid in plot_uniqueids:
+                        kwargs = _deepcopy(kwargs_style)
+
                         parameter_ind = list(adopt_uniqueids).index(plot_uniqueid)
                         _, index = _extract_index_from_string(plot_uniqueid)
                         yparam = fitted_ps.get_parameter(uniqueid=plot_uniqueid, **_skip_filter_checks)
 
-                        for walker_ind in range(samples_proc.shape[1]):
-                            kwargs = _deepcopy(kwargs_orig)
+                        kwargs_style['x'] = np.arange(samples_proc.shape[0], dtype=float)*thin+burnin
+                        kwargs_style['xlabel'] = 'iteration (burnin={}, thin={}, lnprob_cutoff={})'.format(burnin, thin, lnprob_cutoff)
 
-                            if c is None:
-                                pass
-                            elif c == 'lnprobabilities':
-                                # we only need to get this once and can re-use it per-parameter/walker
-                                kwargs['c'] = lnprobabilities_proc[:, walker_ind]
-                                kwargs['clabel'] = _plural_to_singular_get(c)
-                                kwargs['cqualifier'] = c
-                            elif len(fitted_ps.filter(twig=c, **_skip_filter_checks).to_list()):
-                                match_params = fitted_ps.filter(twig=c, **_skip_filter_checks)
-                                if len(match_params) > 1:
-                                    raise ValueError("c={} matches more than one valid parameter ({})".format(c, match_params.twigs))
-                                match_param = match_params.get_parameter()
-                                # TODO: allow to plot from outside adopt_parameters?
-                                match_ind = list(fitted_uniqueids).index(match_param.uniqueid)
-                                kwargs['c'] = samples_proc_all[:, walker_ind, match_ind]
-                                kwargs['clabel'] = match_param.twig
-                                kwargs['cqualifier'] = match_param.qualifier
-                            else:
-                                # assume named color?
-                                kwargs['c'] = c
+                        kwargs_style['ylabel'] = _corner_label(yparam, index=index)
+                        # TODO: use fitted_units instead?
+                        kwargs_style['yunit'] = fitted_units[parameter_ind]
 
-                            # this needs to be the unflattened version
-                            samples_y = samples_proc[:, walker_ind, parameter_ind]
+                        if 'spread' in style:
+                            kwargs = _deepcopy(kwargs_style)
+                            if c is not None:
+                                kwargs['c'] = c if c not in ['lnprobablities'] + fitted_ps.qualifiers and '@' not in c else 'black'
+                            kwargs.setdefault('c', 'black')
+                            kwargs['y'] = np.median(samples_proc[:, :, parameter_ind], axis=1)
 
-                            kwargs['x'] = np.arange(len(samples_y), dtype=float)*thin+burnin
-                            kwargs['xlabel'] = 'iteration (burnin={}, thin={}, lnprob_cutoff={})'.format(burnin, thin, lnprob_cutoff)
+                            spread_kwargs = _deepcopy(kwargs)
+                            sigma = kwargs.get('spread_sigma', 1)
+                            bounds = np.percentile(samples_proc[:, :, parameter_ind], 100 * _norm.cdf([-sigma, 0, sigma]), axis=1)
+                            spread_kwargs['autofig_method'] = 'fill_between'
+                            spread_kwargs['y'] = bounds.T
+                            spread_kwargs['alpha'] = 0.3
+                            return_ += [kwargs, spread_kwargs]
 
-                            kwargs['y'] = samples_y
-                            kwargs['ylabel'] = _corner_label(yparam, index=index)
-                            # TODO: use fitted_units instead?
-                            kwargs['yunit'] = fitted_units[parameter_ind]
+                        else:
+                            for walker_ind in range(samples_proc.shape[1]):
+                                kwargs = _deepcopy(kwargs_style)
 
-                            # TODO: support for c = twig/lnprobabilities
-                            return_ += [kwargs]
-                elif style in ['acf', 'acf_lnprobabilities']:
+                                if c is None:
+                                    pass
+                                elif c == 'lnprobabilities':
+                                    # we only need to get this once and can re-use it per-parameter/walker
+                                    kwargs['c'] = lnprobabilities_proc[:, walker_ind]
+                                    kwargs['clabel'] = _plural_to_singular_get(c)
+                                    kwargs['cqualifier'] = c
+                                elif len(fitted_ps.filter(twig=c, **_skip_filter_checks).to_list()):
+                                    match_params = fitted_ps.filter(twig=c, **_skip_filter_checks)
+                                    if len(match_params) > 1:
+                                        raise ValueError("c={} matches more than one valid parameter ({})".format(c, match_params.twigs))
+                                    match_param = match_params.get_parameter()
+                                    # TODO: allow to plot from outside adopt_parameters?
+                                    match_ind = list(fitted_uniqueids).index(match_param.uniqueid)
+                                    kwargs['c'] = samples_proc_all[:, walker_ind, match_ind]
+                                    kwargs['clabel'] = match_param.twig
+                                    kwargs['cqualifier'] = match_param.qualifier
+                                else:
+                                    # assume named color?
+                                    kwargs['c'] = c
+
+                                # this needs to be the unflattened version
+                                samples_y = samples_proc[:, walker_ind, parameter_ind]
+                                kwargs['y'] = samples_y
+
+                                # TODO: support for c = twig/lnprobabilities
+                                return_ += [kwargs]
+
+                elif style in ['acf', 'trace_acf', 'acf_trace', 'lnprobabilities_acf', 'acf_lnprobabilities']:
+                    # official style: trace_acf, lnprobabilities_acf
+                    kwargs_style = _deepcopy(kwargs_orig)
                     nlags = ps.get_value(qualifier='nlags', nlags=kwargs.get('nlags', None), **_skip_filter_checks)
 
-                    kwargs['plot_package'] = 'autofig'
+                    kwargs_style['plot_package'] = 'autofig'
                     if 'parameters' in kwargs.keys():
                         raise ValueError("cannot currently plot {} while providing parameters.  Pass or set adopt_parameters to plot a subset of available parameters".format(style))
-                    kwargs['autofig_method'] = 'plot'
-                    kwargs.setdefault('marker', 'None')
-                    kwargs.setdefault('linestyle', 'solid')
+                    kwargs_style['autofig_method'] = 'plot'
+                    kwargs_style.setdefault('marker', 'None')
+                    kwargs_style.setdefault('linestyle', 'solid')
 
                     fitted_uniqueids = self._bundle.get_value(qualifier='fitted_uniqueids', context='solution', solution=ps.solution, **_skip_filter_checks)
                     # fitted_twigs = self._bundle.get_value(qualifier='fitted_twigs', context='solution', solution=ps.solution, **_skip_filter_checks)
@@ -5099,12 +5164,9 @@ class ParameterSet(object):
                     # acf_b_proc [parameters, nwalkers, lag]
                     # ci_proc (float)
 
-                    c = kwargs.get('c', None)
-                    kwargs_orig = _deepcopy(kwargs)
-
-                    plot_uniqueids = adopt_uniqueids if style=='acf' else [0]
+                    plot_uniqueids = adopt_uniqueids if 'lnprobabilities' not in style else [0]
                     for plot_uniqueid in plot_uniqueids:
-                        if style=='acf':
+                        if 'lnprobabilities' not in style:
                             parameter_ind = list(adopt_uniqueids).index(plot_uniqueid)
                             _, index = _extract_index_from_string(plot_uniqueid)
                             yparam = fitted_ps.get_parameter(uniqueid=plot_uniqueid, **_skip_filter_checks)
@@ -5113,7 +5175,7 @@ class ParameterSet(object):
 
                         nwalkers = acf_proc[parameter_ind+1].shape[0]
                         for walker_ind in range(nwalkers):
-                            kwargs = _deepcopy(kwargs_orig)
+                            kwargs = _deepcopy(kwargs_style)
 
                             if c is None:
                                 pass
@@ -5128,7 +5190,7 @@ class ParameterSet(object):
                             kwargs['xlabel'] = 'lag (nlags={}, burnin={}, lnprob_cutoff={})'.format(nlags, burnin, lnprob_cutoff)
 
                             kwargs['y'] = acf_y
-                            kwargs['ylabel'] = 'normalized autocorrelation ({})'.format('lnprobabilities' if style=='acf_lnprobabilities' else _corner_twig(yparam, index=index))
+                            kwargs['ylabel'] = 'normalized autocorrelation ({})'.format('lnprobabilities' if 'lnprobabilities' in style else _corner_twig(yparam, index=index))
 
                             ci_b = ci_b_proc[parameter_ind+1][walker_ind, :]
                             ci_b_fb = {'plot_package': 'autofig',
@@ -5420,6 +5482,14 @@ class ParameterSet(object):
             will be raised.  Note: if a dataset uses compute_phases_t0 that differs
             from `t0`, this may result in a different mapping between
             `phase` and `time`.
+
+        * `style` (string, optional): applicable for plotting solutions only,
+            which style to use when plotting.  Valid styles for emcee include:
+            `lnprobabilities`, `trace`, `lnprobablities_spread` (also accepts
+            a `spread_sigma` which defaults to 1), `trace_spread` (also accepts
+            a `spread_sigma` which defaults to 1), `lnprobabilities_acf`, `trace_acf`,
+            `corner`, and `failed`.  Valid  styles for dynesty include: `trace`,
+            `run`, `corner`, and `failed`.
 
         * `x` (string/float/array, optional): qualifier/twig of the array to plot on the
             x-axis (will default based on the dataset-kind if not provided).

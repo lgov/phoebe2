@@ -394,6 +394,12 @@ def _to_twig_with_index(twig, index):
     else:
         return '{}[{}]@{}'.format(twig.split('@')[0], index, '@'.join(twig.split('@')[1:]))
 
+def _to_uniqueid_with_index(uniqueid, index):
+    if index is None:
+        return uniqueid
+    else:
+        return '{}[{}]'.format(uniqueid, index)
+
 
 class BaseSolverBackend(object):
     def __init__(self):
@@ -1235,7 +1241,20 @@ class EmceeBackend(BaseSolverBackend):
             global failed_samples_buffer
             failed_samples_buffer = []
 
-            if mpi.nprocs > kwargs.get('nwalkers') and b.get_compute(compute=compute, **_skip_filter_checks).kind == 'phoebe':
+            compute_kind = b.get_compute(compute=compute, **_skip_filter_checks).kind
+            supports_per_time = False
+            if compute_kind == 'phoebe':
+                # check to see if any of the enabled datasets support per-time parallelization
+                enabled_datasets = b.filter(qualifier='enabled', compute=compute, context='compute', value=True, **_skip_filter_checks).datasets
+                enabled_dataset_kinds = b.filter(dataset=enabled_datasets, context='dataset', **_skip_filter_checks).kinds
+
+                if 'lc' in enabled_dataset_kinds or 'lp' in enabled_dataset_kinds:
+                    supports_per_time = True
+                elif 'rv' in enabled_dataset_kinds and 'flux-weighted' in [p.get_value() for p in b.filter(qualifier='rv_method', compute=compute, dataset=enabled_datasets, context='compute', **_skip_filter_checks).to_list()]:
+                    supports_per_time = True
+                # otherwise we just have orbits and/or dynamical RVs, so we'll leave supports_per_time=False
+
+            if mpi.nprocs > kwargs.get('nwalkers') and supports_per_time:
                 logger.info("nprocs > nwalkers: using per-time parallelization and emcee in serial")
 
                 # we'll keep MPI at the per-compute level, so we'll pass
@@ -1329,6 +1348,9 @@ class EmceeBackend(BaseSolverBackend):
                                                                             pool=pool
                                                                             )
 
+                params_uniqueids_and_indices = [_extract_index_from_string(uid) for uid in params_uniqueids]
+                params_twigs = [_to_twig_with_index(b.get_parameter(uniqueid=uniqueid, **_skip_filter_checks).twig, index) for uniqueid, index in params_uniqueids_and_indices]
+
                 wrap_central_values = _wrap_central_values(b, dc, params_uniqueids)
                 params_units = [dist.unit.to_string() for dist in dc.dists]
 
@@ -1341,16 +1363,23 @@ class EmceeBackend(BaseSolverBackend):
                 wrap_central_values = continue_from_ps.get_value(qualifier='wrap_central_values', **_skip_filter_checks)
                 params_uniqueids = continue_from_ps.get_value(qualifier='fitted_uniqueids', **_skip_filter_checks)
 
-                if not np.all([uniqueid in b.uniqueids for uniqueid in params_uniqueids]):
+                if not np.all([uniqueid.split('[')[0] in b.uniqueids for uniqueid in params_uniqueids]):
                     logger.info("continue_from uniqueid matches not found, falling back on twigs")
                     params_twigs = continue_from_ps.get_value(qualifier='fitted_twigs', **_skip_filter_checks)
                     original_params_uniqueids = list(params_uniqueids)
-                    params_uniqueids = [b.get_parameter(twig=twig, **_skip_filter_checks).uniqueid for twig in params_twigs]
+                    params_twigs_and_indices = [_extract_index_from_string(t) for t in params_twigs]
+                    params_uniqueids = [_to_uniqueid_with_index(b.get_parameter(twig=twig, **_skip_filter_checks).uniqueid, index) for twig, index in params_twigs_and_indices]
+
 
                     if np.all([uniqueid in original_params_uniqueids for uniqueid in wrap_central_values.keys()]):
                         # then we can successfully map the old uniqueids to new uniqueids... otherwise the following
                         # if statement will trigger re-creating the wrapping rules
                         wrap_central_values = {params_uniqueids[original_params_uniqueids.index(k)]: v for k,v in wrap_central_values.items()}
+
+                else:
+                    params_uniqueids_and_indices = [_extract_index_from_string(uid) for uid in params_uniqueids]
+                    params_twigs = [_to_twig_with_index(b.get_parameter(uniqueid=uniqueid, **_skip_filter_checks).twig, index) for uniqueid, index in params_uniqueids_and_indices]
+
 
                 if not np.all([uniqueid in b.uniqueids for uniqueid in wrap_central_values.keys()]):
                     # this really shouldn't happen... but if the bundle was
@@ -1392,9 +1421,6 @@ class EmceeBackend(BaseSolverBackend):
                 nwalkers = int(p0.shape[-1])
 
                 start_iteration = continued_lnprobabilities.shape[0]
-
-            params_uniqueids_and_indices = [_extract_index_from_string(uid) for uid in params_uniqueids]
-            params_twigs = [_to_twig_with_index(b.get_parameter(uniqueid=uniqueid, **_skip_filter_checks).twig, index) for uniqueid, index in params_uniqueids_and_indices]
 
             esargs['pool'] = pool
             esargs['nwalkers'] = nwalkers
@@ -1617,9 +1643,9 @@ class DynestyBackend(BaseSolverBackend):
         within_mpirun = mpi.within_mpirun
         mpi_enabled = mpi.enabled
 
-        # emcee handles workers itself.  So here we'll just take the workers
+        # dynesty handles workers itself.  So here we'll just take the workers
         # from our own waiting loop in phoebe's __init__.py and subscribe them
-        # to emcee's pool.
+        # to dynesty's pool.
         if mpi.within_mpirun:
             logger.info("dynesty: using MPI pool")
 
