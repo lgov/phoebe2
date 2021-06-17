@@ -104,6 +104,7 @@ def as_dYdtheta(l, m, theta, phi):
     if abs(m) >= l:
         Y = 0.
     else:
+        # print(theta, np.sin(theta))
         factor = 1./np.sin(theta)
         term1 = l     * as_norm_J(l+1, m) * as_Y(l+1, m, theta, phi)
         term2 = (l+1) * as_norm_J(l,   m) * as_Y(l-1, m, theta, phi)
@@ -154,6 +155,7 @@ def as_xi_theta(l, m, theta, phi, wt, Omega=0, k=0):
         Zima W, A&A 455, 227–234 (2006), Appendix A
     """
 
+    theta[theta<1e-3] = 1e-3
     term1 = k * as_dYdtheta(l, m, theta, phi) * np.exp(1j*wt)
     term2 = as_norm_atlp1(l, m, Omega, k) / np.sin(theta) * as_dYdphi(l+1, m, theta, phi) * np.exp(1j*wt + np.pi/2)
     term3 = as_norm_atlm1(l, m, Omega, k) / np.sin(theta) * as_dYdphi(l-1, m, theta, phi) * np.exp(1j*wt - np.pi/2)
@@ -174,6 +176,7 @@ def as_xi_phi(l, m, theta, phi, wt, Omega=0, k=0):
         Zima W, A&A 455, 227–234 (2006), Appendix A
     """
 
+    theta[theta<1e-3] = 1e-3
     term1 = k/np.sin(theta) * as_dYdphi(l, m, theta, phi) * np.exp(1j*wt)
     term2 = -as_norm_atlp1(l, m, Omega, k) * as_dYdtheta(l+1, m, theta, phi)*np.exp(1j*wt+np.pi/2)
     term3 = -as_norm_atlm1(l, m, Omega, k) * as_dYdtheta(l-1, m, theta, phi)*np.exp(1j*wt-np.pi/2)
