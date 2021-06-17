@@ -3573,6 +3573,9 @@ static PyObject *rotstar_misaligned_gradOmega_only(PyObject *self, PyObject *arg
 
   auto fname = "rotstar_misaligned_gradOmega_only"_s;
 
+  if (verbosity_level>=4)
+    report_stream << fname << "::START" << std::endl;
+
   double p[5];
 
   PyObject *o_misalignment;
@@ -3588,8 +3591,6 @@ static PyObject *rotstar_misaligned_gradOmega_only(PyObject *self, PyObject *arg
     return NULL;
   }
 
-  Tmisaligned_rot_star<double> b(p);
-
   if (PyFloat_Check(o_misalignment)) {
 
     double s = std::sin(PyFloat_AsDouble(o_misalignment));
@@ -3604,9 +3605,22 @@ static PyObject *rotstar_misaligned_gradOmega_only(PyObject *self, PyObject *arg
     for (int i = 0; i < 3; ++i) p[i+1] = s[i];
   }
 
-  double g[3];
+  p[4] = 0;   // Omega0 = 0
 
-  b.grad_only((double*)PyArray_DATA(X), g);
+  Tmisaligned_rot_star<double> b(p);
+
+  double g[3], *r = (double*)PyArray_DATA(X);
+
+  if (verbosity_level>=4)
+    report_stream << fname + "::r=" << r[0] << '\t' << r[1] << '\t' <<  r[2] << '\n';
+
+  b.grad_only(r, g);
+
+  if (verbosity_level>=4)
+    report_stream << fname + "::g=" << g[0] << '\t' << g[1] << '\t' <<  g[2] << '\n';
+
+  if (verbosity_level>=4)
+    report_stream << fname << "::END" << std::endl;
 
   return PyArray_FromVector(3, g);
 }
@@ -9908,12 +9922,12 @@ static PyObject *wd_readdata(PyObject *self, PyObject *args, PyObject *keywds) {
   //
   // Reading
   //
-	
+
   int len[2] = {
     wd_atm::read_data<double, wd_atm::N_planck>(PyString_AsString(ofilename_planck), planck_table),
     wd_atm::read_data<double, wd_atm::N_atm>(PyString_AsString(ofilename_atm), atm_table)
 	};
-	
+
   //
   // Checks
   //
@@ -9932,8 +9946,8 @@ static PyObject *wd_readdata(PyObject *self, PyObject *args, PyObject *keywds) {
     err_msg = "\nAtm file:\""_s + PyString_AsString(ofilename_atm)+ "\"likely does not exist."_s;
   else if (len[1] != wd_atm::N_atm)
     err_msg += "\nWrong size read, len= "_s + std::to_string(len[1]) + " len_expected="_s + std::to_string(wd_atm::N_atm);
- 
- 
+
+
   if (err_msg.size() != 0) {
     raise_exception(fname + "::Problem reading data." + err_msg);
     delete [] planck_table;
