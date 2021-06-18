@@ -1556,7 +1556,6 @@ class Star(Body):
             theta = 0.0
             self._standard_meshes[theta].update_columns(gravs=gravs)
 
-
     def _fill_teffs(self, mesh=None, ignore_effects=False, **kwargs):
         r"""
 
@@ -1582,6 +1581,7 @@ class Star(Body):
                         roche_coords_for_computations = np.array([1.0, 0.0, 0.0]) - mesh.roche_coords_for_computations
                     else:
                         roche_coords_for_computations = mesh.roche_coords_for_computations
+                    
                     teffs = feature.process_teffs(teffs, roche_coords_for_computations, s=self.polar_direction_xyz, t=self.time)
                 else:
                     teffs = feature.process_teffs(teffs, mesh.coords_for_computations, s=self.polar_direction_xyz, t=self.time)
@@ -3254,6 +3254,9 @@ class Pulsation(Feature):
         new_coords[:,1] = new_r * np.sin(new_theta) * np.cos(new_phi)
         new_coords[:,2] = new_r * np.cos(new_theta)
 
+        self.before = r
+        self.after = np.sqrt( (new_coords**2).sum(axis=1) )
+
         return new_coords
 
     def process_coords_for_observations(self, coords_for_computations, coords_for_observations, s, t):
@@ -3309,6 +3312,7 @@ class Pulsation(Feature):
         """
         """
         if not self._teffext:
+            teffs *= self.before**2/self.after**2
             return teffs
 
         raise NotImplementedError("teffext=True not yet supported for pulsations")
