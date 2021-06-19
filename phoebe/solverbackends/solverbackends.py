@@ -1427,7 +1427,7 @@ class EmceeBackend(BaseSolverBackend):
             esargs['ndim'] = len(params_uniqueids)
             esargs['log_prob_fn'] = _lnprobability
             # esargs['a'] = kwargs.pop('a', None),
-            # esargs['moves'] = kwargs.pop('moves', None)
+            esargs['moves'] = kwargs.pop('moves', None)
             # esargs['args'] = None
 
             esargs['kwargs'] = {'b': _bsolver(b, solver, compute, init_from+priors, wrap_central_values),
