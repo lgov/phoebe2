@@ -275,9 +275,9 @@ class import_check(Command):
       import corner
       corner_version = corner.__version__
       if LooseVersion(corner_version) < LooseVersion('2.0.0'):
-        optional.append('corner 2.0+')
+        required.append('corner 2.0+')
     except:
-      optional.append('corner')
+      required.append('corner')
     try:
       import sympy
       sympy_version = sympy.__version__
@@ -367,7 +367,7 @@ setup (name = 'phoebe',
             'Programming Language :: Python :: 3 :: Only',
         ],
        python_requires='>=3.6, <4',
-       download_url = 'https://github.com/phoebe-project/phoebe2/tarball/2.3.43',
+       download_url = 'https://github.com/phoebe-project/phoebe2/tarball/2.3.44',
        packages = ['phoebe',
                    'phoebe.parameters', 'phoebe.parameters.solver', 'phoebe.parameters.figure',
                    'phoebe.frontend',

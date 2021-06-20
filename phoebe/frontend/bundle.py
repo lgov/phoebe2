@@ -5836,17 +5836,16 @@ class Bundle(ParameterSet):
         """
 
         func = _get_add_func(_component, kind)
-
-        fname = func.__name__
+        kind = func.__name__
 
         if kwargs.get('component', False) is None:
             # then we want to apply the default below, so let's pop for now
             _ = kwargs.pop('component')
 
         kwargs.setdefault('component',
-                          self._default_label(fname,
+                          self._default_label(kind,
                                               **{'context': 'component',
-                                                 'kind': fname}))
+                                                 'kind': kind}))
 
         if kwargs.pop('check_label', True):
             self._check_label(kwargs['component'], allow_overwrite=kwargs.get('overwrite', False))
@@ -5856,7 +5855,7 @@ class Bundle(ParameterSet):
 
         metawargs = {'context': 'component',
                      'component': kwargs['component'],
-                     'kind': fname}
+                     'kind': kind}
 
         if kwargs.get('overwrite', False):
             overwrite_ps = self.remove_component(component=kwargs['component'], during_overwrite=True)
@@ -8108,6 +8107,13 @@ class Bundle(ParameterSet):
                         kwargs.setdefault('to_uniforms', self.get_value('{}_sigma'.format(ps.qualifier), check_visible=False, check_default=False, **{k:v for k,v in ps.meta.items() if k not in ['qualifier']}))
                         kwargs.setdefault('require_limits', False)
 
+                elif ps.qualifier in ['priors']:
+                    kwargs.setdefault('include_constrained', True)
+                    kwargs.setdefault('to_univariates', False)
+                    kwargs.setdefault('require_limits', False)
+                    kwargs.setdefault('require_checks', False)
+                    kwargs.setdefault('require_compute', False)
+                    kwargs.setdefault('require_priors', False)
                 else:
                     raise NotImplementedError("get_distribution_collection for solver kind='{}' not implemented".format(kind))
 
@@ -8508,6 +8514,11 @@ class Bundle(ParameterSet):
                     require_priors = False
 
                 for prior, prior_uniqueid in zip(priors_dc.dists, priors_uniqueids):
+                    if prior_uniqueid not in uniqueids:
+                        # TODO: check if prior is on a parameter constrained by any parameter in the distribution
+                        require_priors = False # to return that we couldn't fully account for priors
+                        continue
+
                     i = uniqueids.index(prior_uniqueid)
                     param = self.get_parameter(uniqueid=prior_uniqueid, **_skip_filter_checks)
                     label = ret_dists[i].label
@@ -9436,19 +9447,18 @@ class Bundle(ParameterSet):
         """
 
         func = _get_add_func(_figure, kind)
-
-        fname = func.__name__
+        kind = func.__name__
 
         if kwargs.get('figure', False) is None:
             # then we want to apply the default below, so let's pop for now
             _ = kwargs.pop('figure')
 
 
-        default_label_base = {'distribution_collection': 'dc'}.get(fname, fname)
+        default_label_base = {'distribution_collection': 'dc'}.get(kind, kind)
         kwargs.setdefault('figure',
                           self._default_label(default_label_base+'fig',
                                               **{'context': 'figure',
-                                                 'kind': fname}))
+                                                 'kind': kind}))
 
         if kwargs.pop('check_label', True):
             self._check_label(kwargs['figure'], allow_overwrite=kwargs.get('overwrite', False))
@@ -9460,7 +9470,7 @@ class Bundle(ParameterSet):
 
         metawargs = {'context': 'figure',
                      'figure': kwargs['figure'],
-                     'kind': fname}
+                     'kind': kind}
 
         if kwargs.get('overwrite', False):
             overwrite_ps = self.remove_figure(figure=kwargs['figure'], during_overwrite=True)
@@ -10950,7 +10960,7 @@ class Bundle(ParameterSet):
         if model in self.models and kwargs.get('overwrite', model=='latest'):
             # NOTE: default (instead of detached_job=) is correct here
             if self.get_value(qualifier='detached_job', model=model, context='model', default='loaded') not in ['loaded', 'error', 'killed']:
-                raise ValueError("model '{}' cannot be overwritten until it is complete and loaded.".format(model))
+                raise ValueError("model '{}' cannot be overwritten until it is complete and loaded (or killed).".format(model))
             if model=='latest':
                 logger.warning("overwriting model: {}".format(model))
             else:
