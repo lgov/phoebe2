@@ -181,7 +181,7 @@ _forbidden_labels += ['bol']
 # forbid all kinds
 _forbidden_labels += ['lc', 'rv', 'lp', 'sp', 'orb', 'mesh']
 _forbidden_labels += ['star', 'orbit', 'envelope']
-_forbidden_labels += ['spot', 'pulsation']
+_forbidden_labels += ['spot', 'pulsation', 'gaussian_process', 'emcee_move']
 _forbidden_labels += ['phoebe', 'legacy', 'jktebop', 'photodynam', 'ellc']
 
 
@@ -292,7 +292,9 @@ _forbidden_labels += ['colat', 'long', 'radius', 'relteff',
                       'radamp', 'freq', 'l', 'm', 'teffext',
                       'spot', 'gaussian_process', 'pulsation',
                       'kernel', 'log_S0', 'log_Q', 'log_rho',
-                      'log_omega0', 'log_sigma', 'eps'
+                      'log_omega0', 'log_sigma', 'eps',
+                      'move', 'weight', 'a', 'smode', 's', 'bw_method', 'bw_constant',
+                      'sigma', 'gamma0_mode', 'gamma0', 'gammas'
                       ]
 
 # from figure:
