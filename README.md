@@ -84,6 +84,41 @@ To understand how to use PHOEBE, please consult the [tutorials, scripts and manu
 CHANGELOG
 ----------
 
+### 2.3.51 - units physical type astropy update bugfix
+
+* fixes parsing the physical type of a unit in latest releases of astropy.  Without this fix, some constraints may fail to run.  
+* implements a new b.run_all_constraints, which is now automatically called when importing from a file in case any constraints were in the failed state.
+
+### 2.3.50 - contact binary estimators bugfix
+
+* rv_geometry: explicitly look for RVs attached to stars (not envelopes, which raised a lookup error).
+* run_checks_solver: run compatibility checks between solver and hierarchies.  Contact binaries are not supported by lc_geometry or ebai, single stars are not supported by lc_geometry, ebai, or rv_geometry.
+
+
+### 2.3.49 - requivsumfrac flipping bugfix
+
+* fix remaining cases for flipping requivsumfrac constraint (see 2.3.45 bugfix release for the partial fix for some, but not all, cases)
+* migrate from Travis CI to GitHub actions for CI testing
+
+### 2.3.48 - mu atm out-of-bounds bugfix
+
+* fixes atmosphere out-of-bounds error caused by mu that should be exactly 0 or 1, but numerically out-of-bounds.
+
+### 2.3.47 - calculate_lnp bugfix
+
+* fixes calculate_lnp to more robustly handle parameter matching for both the constrained and unconstrained case
+* fixes default_binary constructor when overriding label of the 'binary' orbit
+* fixes typo in ellc backend for the period==1 case
+
+### 2.3.46 - rvperiodogram SB1 bugfix
+
+* fixes handling of SB1s (RVs with a single component) in the rv_periodogram estimator
+* adds checks to forbid zeros in dataset sigmas
+
+### 2.3.45 - requivsumfrac constraint flipping bugfix
+
+* fixes bug in flipping requivsumfrac constraint for requivratio when requiv of the secondary star is already constrained
+
 ### 2.3.44 - add_component/figure bugfix
 * fixes bug in assigning parameter tags when passing function (as kind) to add_component or add_figure.
 
