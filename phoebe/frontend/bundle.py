@@ -12041,7 +12041,7 @@ class Bundle(ParameterSet):
                             if len(ds_sigmas) != len(ds_x):
                                 raise ValueError("gaussian_process requires sigma of same length as {}".format(xqualifier))
 
-                            gp_kernel.compute(ds_x, ds_sigmas, check_sorted=True)
+                            gp_kernel.compute(ds_x, yerr=ds_sigmas, check_sorted=True)
 
                             residuals, model_y_dstimes = self.calculate_residuals(model=model, dataset=ds, component=ds_comp, return_interp_model=True, as_quantity=False, consider_gaussian_process=False)
                             gp_y = gp_kernel.predict(residuals, ds_x, return_cov=False)
