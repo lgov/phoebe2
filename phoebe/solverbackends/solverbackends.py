@@ -40,12 +40,7 @@ except ImportError:
 else:
     _use_dynesty = True
 
-try:
-    from tqdm import tqdm as _tqdm
-except ImportError:
-    _has_tqdm = False
-else:
-    _has_tqdm = True
+from tqdm import tqdm as _tqdm
 
 try:
     from astropy.timeseries import BoxLeastSquares as _BoxLeastSquares
@@ -236,7 +231,7 @@ def _get_combined_lc(b, datasets, combine, phase_component=None, mask=True, norm
 
         if len(ds_sigmas) == 0:
             # TODO: option for this???
-            ds_sigmas = 0.001*fluxes.mean()*np.ones(len(fluxes))
+            ds_sigmas = np.full_like(ds_fluxes, fill_value=0.001*ds_fluxes.mean())
 
         if normalize:
             if combine == 'max':
@@ -342,9 +337,15 @@ def _get_combined_rv(b, datasets, components, phase_component=None, mask=True, n
                     rvc_rvs = rvc_rvs[inds]
                     rvc_sigmas = rvc_sigmas[inds]
 
+            if not len(rvc_times):
+                continue
+
             c_times = np.append(c_times, rvc_times)
             c_rvs = np.append(c_rvs, rvc_rvs)
             c_sigmas = np.append(c_sigmas, rvc_sigmas)
+
+        if not len(c_rvs):
+            continue
 
         if normalize:
             c_rvs_max = abs(c_rvs).max()
@@ -398,6 +399,12 @@ def _to_twig_with_index(twig, index):
         return twig
     else:
         return '{}[{}]@{}'.format(twig.split('@')[0], index, '@'.join(twig.split('@')[1:]))
+
+def _to_uniqueid_with_index(uniqueid, index):
+    if index is None:
+        return uniqueid
+    else:
+        return '{}[{}]'.format(uniqueid, index)
 
 
 class BaseSolverBackend(object):
@@ -697,7 +704,7 @@ class Rv_GeometryBackend(BaseSolverBackend):
 
         # TODO: one for each component
         orbit = kwargs.get('orbit')
-        starrefs = b.hierarchy.get_children_of(orbit)
+        starrefs = b.hierarchy.get_stars_of_children_of(orbit)
         for starref in starrefs:
             solution_params += [_parameters.FloatArrayParameter(qualifier='input_phases', component=starref, value=[], readonly=True, default_unit=u.dimensionless_unscaled, description='input phases (after binning, if applicable) for geometry estimate')]
             solution_params += [_parameters.FloatArrayParameter(qualifier='input_rvs', component=starref, value=[], readonly=True, default_unit=u.km/u.s, description='input RVs (after binning, if applicable) used for geometry estimate')]
@@ -725,7 +732,7 @@ class Rv_GeometryBackend(BaseSolverBackend):
             # TODO: we need to tell the workers to join the pool for time-parallelization?
 
         orbit = kwargs.get('orbit')
-        starrefs = b.hierarchy.get_children_of(orbit)
+        starrefs = b.hierarchy.get_stars_of_children_of(orbit)
 
         phase_bin = kwargs.get('phase_bin', False)
         if phase_bin:
@@ -959,7 +966,7 @@ class Lc_PeriodogramBackend(_PeriodogramBaseBackend):
     """
     def run_checks(self, b, solver, compute, **kwargs):
         if not _use_astropy_timeseries:
-            raise ImportError("astropy.timeseries not installed (requires astropy 3.2+)")
+            raise ImportError("astropy.timeseries not installed (requires astropy 3.2+). Update astropy and restart phoebe.")
 
         solver_ps = b.get_solver(solver=solver, **_skip_filter_checks)
         if not len(solver_ps.get_value(qualifier='lc_datasets', expand=True, lc_datasets=kwargs.get('lc_datasets', None))):
@@ -981,7 +988,7 @@ class Rv_PeriodogramBackend(_PeriodogramBaseBackend):
     """
     def run_checks(self, b, solver, compute, **kwargs):
         if not _use_astropy_timeseries:
-            raise ImportError("astropy.timeseries not installed (requires astropy 3.2+)")
+            raise ImportError("astropy.timeseries not installed (requires astropy 3.2+).  Update astropy and restart phoebe.")
 
         solver_ps = b.get_solver(solver=solver, **_skip_filter_checks)
         if not len(solver_ps.get_value(qualifier='rv_datasets', expand=True, rv_datasets=kwargs.get('rv_datasets', None))):
@@ -990,7 +997,7 @@ class Rv_PeriodogramBackend(_PeriodogramBaseBackend):
         # TODO: check to make sure rvs exist, etc
 
     def get_observations(self, b, **kwargs):
-        times, phases, rvs, sigmas = _get_combined_rv(b, kwargs.get('rv_datasets'), components=b.hierarchy.get_children_of(kwargs.get('component', None)), phase_component=kwargs.get('component'), mask=False, normalize=True, mirror_secondary=True, phase_sorted=False)
+        times, phases, rvs, sigmas = _get_combined_rv(b, kwargs.get('rv_datasets'), components=b.hierarchy.get_stars_of_children_of(kwargs.get('component', None)), phase_component=kwargs.get('component'), mask=False, normalize=True, mirror_secondary=True, phase_sorted=False)
 
         # print("***", times.shape, rvs.shape)
         # import matplotlib.pyplot as plt
@@ -1133,14 +1140,14 @@ class EmceeBackend(BaseSolverBackend):
         # check whether emcee is installed
 
         if not _use_emcee:
-            raise ImportError("could not import emcee")
+            raise ImportError("could not import emcee.  Install (pip install emcee) and restart phoebe.")
 
         try:
             if LooseVersion(emcee.__version__) < LooseVersion("3.0.0"):
-                raise ImportError("emcee backend requires emcee 3.0+, {} found".format(emcee.__version__))
+                raise ImportError("emcee backend requires emcee 3.0+, {} found.  Update emcee and restart phoebe.".format(emcee.__version__))
         except ValueError:
             # see https://github.com/phoebe-project/phoebe2/issues/378
-            raise ImportError("emcee backend requires a stable release of emcee 3.0+, {} found".format(emcee.__version__))
+            raise ImportError("emcee backend requires a stable release of emcee 3.0+, {} found.  Update emcee and restart phoebe.".format(emcee.__version__))
 
         solver_ps = b.get_solver(solver=solver, **_skip_filter_checks)
         if not len(solver_ps.get_value(qualifier='init_from', init_from=kwargs.get('init_from', None), **_skip_filter_checks)) and solver_ps.get_value(qualifier='continue_from', continue_from=kwargs.get('continue_from', None), **_skip_filter_checks)=='None':
@@ -1184,6 +1191,7 @@ class EmceeBackend(BaseSolverBackend):
         solution_params += [_parameters.ArrayParameter(qualifier='autocorr_times', value=[], readonly=True, description='measured autocorrelation time with shape (len(fitted_twigs)) before applying burnin/thin.  To access with a custom burnin/thin, see phoebe.helpers.get_emcee_object_from_solution')]
         solution_params += [_parameters.IntParameter(qualifier='burnin', value=0, limits=(0,1e6), description='burnin to use when adopting/plotting the solution')]
         solution_params += [_parameters.IntParameter(qualifier='thin', value=1, limits=(1,1e6), description='thin to use when adopting/plotting the solution')]
+        solution_params += [_parameters.IntParameter(qualifier='nlags', value=1, limit=(1,1e6), description='number of lags to use when computing/plotting the autocorrelation function.  If 0, will default to niters-burnin.')]
         solution_params += [_parameters.FloatParameter(qualifier='lnprob_cutoff', value=-np.inf, default_unit=u.dimensionless_unscaled, description='lower limit cuttoff on lnproabilities to use when adopting/plotting the solution')]
 
         solution_params += [_parameters.FloatParameter(qualifier='progress', value=0, limits=(0,100), default_unit=u.dimensionless_unscaled, advanced=True, readonly=True, description='percentage of requested iterations completed')]
@@ -1213,6 +1221,7 @@ class EmceeBackend(BaseSolverBackend):
                      {'qualifier': 'autocorr_times', 'value': autocorr_times},
                      {'qualifier': 'burnin', 'value': burnin},
                      {'qualifier': 'thin', 'value': thin},
+                     {'qualifier': 'nlags', 'value': nlags},
                      {'qualifier': 'progress', 'value': progress}]
 
             if expose_failed:
@@ -1238,7 +1247,20 @@ class EmceeBackend(BaseSolverBackend):
             global failed_samples_buffer
             failed_samples_buffer = []
 
-            if mpi.nprocs > kwargs.get('nwalkers') and b.get_compute(compute=compute, **_skip_filter_checks).kind == 'phoebe':
+            compute_kind = b.get_compute(compute=compute, **_skip_filter_checks).kind
+            supports_per_time = False
+            if compute_kind == 'phoebe':
+                # check to see if any of the enabled datasets support per-time parallelization
+                enabled_datasets = b.filter(qualifier='enabled', compute=compute, context='compute', value=True, **_skip_filter_checks).datasets
+                enabled_dataset_kinds = b.filter(dataset=enabled_datasets, context='dataset', **_skip_filter_checks).kinds
+
+                if 'lc' in enabled_dataset_kinds or 'lp' in enabled_dataset_kinds:
+                    supports_per_time = True
+                elif 'rv' in enabled_dataset_kinds and 'flux-weighted' in [p.get_value() for p in b.filter(qualifier='rv_method', compute=compute, dataset=enabled_datasets, context='compute', **_skip_filter_checks).to_list()]:
+                    supports_per_time = True
+                # otherwise we just have orbits and/or dynamical RVs, so we'll leave supports_per_time=False
+
+            if mpi.nprocs > kwargs.get('nwalkers') and supports_per_time:
                 logger.info("nprocs > nwalkers: using per-time parallelization and emcee in serial")
 
                 # we'll keep MPI at the per-compute level, so we'll pass
@@ -1290,9 +1312,11 @@ class EmceeBackend(BaseSolverBackend):
             niters = kwargs.get('niters')
             nwalkers = kwargs.get('nwalkers')
             continue_from = kwargs.get('continue_from')
+            continue_from_iter = kwargs.get('continue_from_iter')
 
             init_from = kwargs.get('init_from')
             init_from_combine = kwargs.get('init_from_combine')
+            init_from_requires = kwargs.get('init_from_requires')
             priors = kwargs.get('priors')
             priors_combine = kwargs.get('priors_combine')
 
@@ -1300,6 +1324,7 @@ class EmceeBackend(BaseSolverBackend):
 
             burnin_factor = kwargs.get('burnin_factor')
             thin_factor = kwargs.get('thin_factor')
+            nlags_factor = kwargs.get('nlags_factor')
 
             solution_ps = kwargs.get('solution_ps')
             solution = kwargs.get('solution')
@@ -1316,17 +1341,24 @@ class EmceeBackend(BaseSolverBackend):
 
                 expose_failed = kwargs.get('expose_failed')
 
-                # TODO: implement within_distribution_collection=None option to automatically & by any uniforms/deltas in other dc
-                dc, params_uniqueids = b.get_distribution_collection(distribution=init_from,
-                                                                     combine=init_from_combine,
-                                                                     include_constrained=False,
-                                                                     within_parameter_limits=True,
-                                                                     keys='uniqueid')
+                logger.info("initializing {} walker positions".format(nwalkers))
+                dc, params_uniqueids, p0 = b.sample_distribution_collection(distribution=init_from,
+                                                                            combine=init_from_combine,
+                                                                            include_constrained=False,
+                                                                            require_limits='limits' in init_from_requires,
+                                                                            require_checks=compute if 'checks' in init_from_requires else False,
+                                                                            require_compute=compute if 'compute' in init_from_requires else False,
+                                                                            require_priors='priors@{}'.format(solver) if 'priors' in init_from_requires else False,
+                                                                            sample_size=nwalkers,
+                                                                            progressbar=kwargs.get('progressbar', False),
+                                                                            return_dc_uniqueids_array=True,
+                                                                            pool=pool
+                                                                            )
 
+                params_uniqueids_and_indices = [_extract_index_from_string(uid) for uid in params_uniqueids]
+                params_twigs = [_to_twig_with_index(b.get_parameter(uniqueid=uniqueid, **_skip_filter_checks).twig, index) for uniqueid, index in params_uniqueids_and_indices]
 
                 wrap_central_values = _wrap_central_values(b, dc, params_uniqueids)
-
-                p0 = dc.sample(size=nwalkers).T
                 params_units = [dist.unit.to_string() for dist in dc.dists]
 
                 continued_failed_samples = {}
@@ -1338,23 +1370,30 @@ class EmceeBackend(BaseSolverBackend):
                 wrap_central_values = continue_from_ps.get_value(qualifier='wrap_central_values', **_skip_filter_checks)
                 params_uniqueids = continue_from_ps.get_value(qualifier='fitted_uniqueids', **_skip_filter_checks)
 
-                if not np.all([uniqueid in b.uniqueids for uniqueid in params_uniqueids]):
+                if not np.all([uniqueid.split('[')[0] in b.uniqueids for uniqueid in params_uniqueids]):
                     logger.info("continue_from uniqueid matches not found, falling back on twigs")
                     params_twigs = continue_from_ps.get_value(qualifier='fitted_twigs', **_skip_filter_checks)
                     original_params_uniqueids = list(params_uniqueids)
-                    params_uniqueids = [b.get_parameter(twig=twig, **_skip_filter_checks).uniqueid for twig in params_twigs]
+                    params_twigs_and_indices = [_extract_index_from_string(t) for t in params_twigs]
+                    params_uniqueids = [_to_uniqueid_with_index(b.get_parameter(twig=twig, **_skip_filter_checks).uniqueid, index) for twig, index in params_twigs_and_indices]
+
 
                     if np.all([uniqueid in original_params_uniqueids for uniqueid in wrap_central_values.keys()]):
                         # then we can successfully map the old uniqueids to new uniqueids... otherwise the following
                         # if statement will trigger re-creating the wrapping rules
                         wrap_central_values = {params_uniqueids[original_params_uniqueids.index(k)]: v for k,v in wrap_central_values.items()}
 
+                else:
+                    params_uniqueids_and_indices = [_extract_index_from_string(uid) for uid in params_uniqueids]
+                    params_twigs = [_to_twig_with_index(b.get_parameter(uniqueid=uniqueid, **_skip_filter_checks).twig, index) for uniqueid, index in params_uniqueids_and_indices]
+
+
                 if not np.all([uniqueid in b.uniqueids for uniqueid in wrap_central_values.keys()]):
                     # this really shouldn't happen... but if the bundle was
                     # re-created, then we probably don't even have the original
                     # distributions.... so we're forced using the samples from the solution
                     logger.warning("wrap_central_values uniqueid matches not found, recreating wrapping rules based on last samples")
-                    samples_last_iter = continue_from_ps.get_value(qualifier='samples', **_skip_filter_checks)[-1, :, :]
+                    samples_last_iter = continue_from_ps.get_value(qualifier='samples', **_skip_filter_checks)[continue_from_iter, :, :]
                     wrap_central_values = {}
                     for i, uniqueid in enumerate(params_uniqueids):
 
@@ -1364,7 +1403,7 @@ class EmceeBackend(BaseSolverBackend):
                             wrap_central_values[uniqueid] = np.median(samples_this_param)
 
                 params_units = continue_from_ps.get_value(qualifier='fitted_units', **_skip_filter_checks)
-                continued_samples = continue_from_ps.get_value(qualifier='samples', **_skip_filter_checks)
+                continued_samples = continue_from_ps.get_value(qualifier='samples', **_skip_filter_checks)[:continue_from_iter, :, :]
                 expose_failed = 'failed_samples' in continue_from_ps.qualifiers
                 kwargs['expose_failed'] = expose_failed # needed for _get_packet_and_solution
                 if expose_failed:
@@ -1377,7 +1416,7 @@ class EmceeBackend(BaseSolverBackend):
                 # # continued_accepted [iterations, walkers]
                 continued_acceptance_fractions = continue_from_ps.get_value(qualifier='acceptance_fractions', **_skip_filter_checks)
                 # continued_acceptance_fractions [iterations, walkers]
-                continued_lnprobabilities = continue_from_ps.get_value(qualifier='lnprobabilities', **_skip_filter_checks)
+                continued_lnprobabilities = continue_from_ps.get_value(qualifier='lnprobabilities', **_skip_filter_checks)[:continue_from_iter]
                 # continued_lnprobabilities [iterations, walkers]
 
                 # fake a backend object from the previous solution so that emcee
@@ -1389,9 +1428,6 @@ class EmceeBackend(BaseSolverBackend):
                 nwalkers = int(p0.shape[-1])
 
                 start_iteration = continued_lnprobabilities.shape[0]
-
-            params_uniqueids_and_indices = [_extract_index_from_string(uid) for uid in params_uniqueids]
-            params_twigs = [_to_twig_with_index(b.get_parameter(uniqueid=uniqueid, **_skip_filter_checks).twig, index) for uniqueid, index in params_uniqueids_and_indices]
 
             esargs['pool'] = pool
             esargs['nwalkers'] = nwalkers
@@ -1421,7 +1457,7 @@ class EmceeBackend(BaseSolverBackend):
             sargs = {}
             sargs['iterations'] = niters
             sargs['progress'] = kwargs.get('progressbar', False)
-            sargs['skip_initial_state_check'] = False
+            sargs['skip_initial_state_check'] = continue_from != 'None' or 'compute' in init_from_requires
 
 
             logger.debug("sampler.sample(p0, {})".format(sargs))
@@ -1451,11 +1487,15 @@ class EmceeBackend(BaseSolverBackend):
                     if np.any(~np.isnan(autocorr_times)):
                         burnin = int(burnin_factor * np.nanmax(autocorr_times))
                         thin = int(thin_factor * np.nanmin(autocorr_times))
-                        if thin==0:
+                        if thin < 1:
                             thin = 1
+                        nlags = int(nlags_factor * np.nanmax(autocorr_times))
+                        if nlags < sampler.iteration - burnin:
+                            nlags = sampler.iteration - burnin
                     else:
                         burnin =0
                         thin = 1
+                        nlags = 1
 
                     if progress_every_niters > 0:
                         logger.info("emcee: saving output from iteration {}".format(sampler.iteration))
@@ -1509,7 +1549,7 @@ class DynestyBackend(BaseSolverBackend):
         # check whether emcee is installed
 
         if not _use_dynesty:
-            raise ImportError("could not import dynesty")
+            raise ImportError("could not import dynesty.  Install (pip install dynesty) and restart phoebe.")
 
         solver_ps = b.get_solver(solver=solver, **_skip_filter_checks)
         if not len(solver_ps.get_value(qualifier='priors', init_from=kwargs.get('priors', None))):
@@ -1610,9 +1650,9 @@ class DynestyBackend(BaseSolverBackend):
         within_mpirun = mpi.within_mpirun
         mpi_enabled = mpi.enabled
 
-        # emcee handles workers itself.  So here we'll just take the workers
+        # dynesty handles workers itself.  So here we'll just take the workers
         # from our own waiting loop in phoebe's __init__.py and subscribe them
-        # to emcee's pool.
+        # to dynesty's pool.
         if mpi.within_mpirun:
             logger.info("dynesty: using MPI pool")
 
@@ -1958,7 +1998,7 @@ class _ScipyOptimizeBaseBackend(BaseSolverBackend):
                      'solution': _solution}
 
         global _use_progressbar
-        if _has_tqdm and kwargs.get('progressbar', False):
+        if kwargs.get('progressbar', False):
             global _minimize_iter
             _minimize_iter = 0
             global _minimize_pbar
@@ -2093,7 +2133,7 @@ class Differential_EvolutionBackend(BaseSolverBackend):
             params = []
             fitted_units = []
             for twig in fit_parameters:
-                p = b.get_parameter(twig=twig, context=['component', 'dataset'], **_skip_filter_checks)
+                p = b.get_parameter(twig=twig, context=['component', 'dataset', 'feature', 'system'], **_skip_filter_checks)
                 params.append(p)
                 params_uniqueids.append(p.uniqueid)
                 params_twigs.append(p.twig)

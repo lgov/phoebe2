@@ -19,7 +19,7 @@ import pickle as _pickle
 from inspect import getsource as _getsource
 
 from scipy.optimize import curve_fit as cfit
-
+from tqdm import tqdm as _tqdm
 
 # PHOEBE
 # ParameterSet, Parameter, FloatParameter, send_if_client, etc
@@ -42,6 +42,7 @@ from phoebe.solverbackends import solverbackends as _solverbackends
 from phoebe.distortions import roche
 from phoebe.frontend import io
 from phoebe.atmospheres.passbands import list_installed_passbands, list_online_passbands, get_passband, update_passband, _timestamp_to_dt
+from phoebe import pool as _pool
 from phoebe.dependencies import distl as _distl
 from phoebe.dependencies import crimpl as _crimpl
 from phoebe.utils import _bytes, parse_json, _get_masked_times, _get_masked_compute_times
@@ -913,7 +914,7 @@ class Bundle(ParameterSet):
             b._attach_params(_setting.settings(**existing_values_settings), context='setting')
 
 
-            for compute in b.filter(context='compute').computes:
+            for compute in b.filter(context='compute', **_skip_filter_checks).computes:
                 logger.info("attempting to update compute='{}' to new version requirements".format(compute))
                 ps_compute = b.filter(context='compute', compute=compute, **_skip_filter_checks)
                 compute_kind = ps_compute.kind
@@ -927,7 +928,10 @@ class Bundle(ParameterSet):
                     if param.component is None and param.dataset is None: continue
                     b.set_value(qualifier=param.qualifier, compute=compute, dataset=param.dataset, component=param.component, value=param.get_value(), **_skip_filter_checks)
 
-            for solver in b.filter(context='solver').solvers:
+            # just in case the values aren't valid (for continue_from, etc), let's update
+            b._handle_solution_choiceparams()
+            b._handle_solution_selectparams()
+            for solver in b.filter(context='solver', **_skip_filter_checks).solvers:
                 logger.info("attempting to update solver='{}' to new version requirements".format(solver))
                 ps_solver = b.filter(context='solver', solver=solver, **_skip_filter_checks)
                 solver_kind = ps_solver.kind
@@ -935,11 +939,25 @@ class Bundle(ParameterSet):
                 b.remove_solver(solver, context=['solver'])
                 b.add_solver(solver_kind, solver=solver, check_label=False, overwrite=True, **dict_solver)
 
+            for solution in b.filter(context='solution', kind='emcee', **_skip_filter_checks).solutions:
+                solution_ps = b.get_solution(solution=solution)
+                if 'nlags' not in solution_ps.qualifiers:
+                    burnin = solution_ps.get_value(qualifier='burnin', **_skip_filter_checks)
+                    niters = solution_ps.get_value(qualifier='niters', **_skip_filter_checks)
+                    autocorr_times = solution_ps.get_value(qualifier='autocorr_times', **_skip_filter_checks)
+                    nlags_default = 3 * np.nanmax(autocorr_times)
+                    if np.isnan(nlags_default) or nlags_default > niters-burnin:
+                        nlags_default = niters-burnin
+
+                    p = IntParameter(qualifier='nlags', value=int(nlags_default), limit=(1,1e6), description='number of lags to use when computing/plotting the autocorrelation function')
+                    b._attach_params([p], context='solution', solution=solution, compute=solution_ps.compute, kind='emcee')
+
 
         if conf_interactive_checks:
             logger.debug("re-enabling interactive_checks")
             conf._interactive_checks = True
 
+        b.run_all_constraints()
         return b
 
 
@@ -1150,7 +1168,7 @@ class Bundle(ParameterSet):
             if starB != 'secondary':
                 b.rename_component(secondary, starB)
             if orbit != 'binary':
-                b.rename_component('binary', 'orbit')
+                b.rename_component('binary', orbit)
 
             if semidetached == starA or semidetached is True:
                 b.add_constraint('semidetached', component=starA)
@@ -1698,7 +1716,7 @@ class Bundle(ParameterSet):
         """
         if as_client:
             if not _can_client:
-                raise ImportError("dependencies to support client mode not met - see docs")
+                raise ImportError("dependencies to support client mode not met - see docs to install and restart phoebe")
 
             if as_client is True:
                 server = 'localhost:5555'
@@ -3690,7 +3708,7 @@ class Bundle(ParameterSet):
             if pb_needs_ext and pb in ['Stromgren:u', 'Johnson:U', 'SDSS:u', 'SDSS:uprime']:
                 # need to check for bugfix in coefficients from 2.3.4 release
                 installed_timestamp = installed_pbs.get(pb, {}).get('timestamp', None)
-                if _timestamp_to_dt(installed_timestamp) < _timestamp_to_dt("Mon Nov 2 00:00:00 2020"):
+                if installed_timestamp is not None and _timestamp_to_dt(installed_timestamp) < _timestamp_to_dt("Mon Nov 2 00:00:00 2020"):
                     report.add_item(self,
                                     "'{}' passband ({}) with extinction needs to be updated for fixed UV extinction coefficients.  Run phoebe.list_passband_online_history('{}') to get a list of available changes and phoebe.update_passband('{}') or phoebe.update_all_passbands() to update.".format(pb, pbparam.twig, pb, pb),
                                     [pbparam, self.get_parameter(qualifier='ebv', context='system', **_skip_filter_checks)],
@@ -4009,7 +4027,7 @@ class Bundle(ParameterSet):
             gps = self.filter(kind='gaussian_process', context='feature', **_skip_filter_checks).features
             compute_enabled_gps = self.filter(qualifier='enabled', feature=gps, value=True, **_skip_filter_checks).features
             compute_enabled_datasets = self.filter(qualifier='enabled', dataset=self.datasets, value=True, **_skip_filter_checks).datasets
-            compute_enabled_datasets_with_gps = [ds for ds in self.filter(qualifier='enabed', feature=gps, value=True, **_skip_filter_checks).datasets if ds in compute_enabled_datasets]
+            compute_enabled_datasets_with_gps = [ds for ds in self.filter(feature=compute_enabled_gps, **_skip_filter_checks).datasets if ds in compute_enabled_datasets]
 
             # per-compute hierarchy checks
             if len(self.hierarchy.get_envelopes()):
@@ -4129,7 +4147,7 @@ class Bundle(ParameterSet):
                         ds_y = ds_ps.get_value(qualifier=yqualifier, component=ds_comp, **_skip_filter_checks)
                         ds_sigmas = ds_ps.get_value(qualifier='sigmas', component=ds_comp, **_skip_filter_checks)
                         # NOTE: if we're supporting GPs on RVs, we should only require at least ONE component to have len(ds_x)
-                        if len(ds_sigmas) != len(ds_x) or len(ds_y) != len(ds_x) or (ds_ps.kind in ['lc'] and not len(ds_x)):
+                        if not len(ds_y) or len(ds_sigmas) != len(ds_x) or len(ds_y) != len(ds_x) or (ds_ps.kind in ['lc'] and not len(ds_x)):
                             report.add_item(self,
                                             "gaussian process requires observational data and sigmas",
                                             ds_ps.filter(qualifier=[xqualifier, yqualifier, 'sigmas'], component=ds_comp, **_skip_filter_checks).to_list()+
@@ -4372,10 +4390,27 @@ class Bundle(ParameterSet):
                                 False
                                 )
 
+        is_single = len(self.hierarchy.get_stars()) == 1
+        is_cb = len(self.hierarchy.get_envelopes()) > 0
 
         for solver in solvers:
             solver_ps = self.get_solver(solver=solver, **_skip_filter_checks)
             solver_kind = solver_ps.kind
+
+            if is_single and solver_kind in ['lc_geometry', 'ebai', 'rv_geometry']:
+                report.add_item(self,
+                                "{} does not support single stars".format(solver_kind),
+                                [self.hierarchy]+addl_parameters,
+                                True, 'run_solver')
+
+            elif is_cb and solver_kind in ['lc_geometry', 'ebai']:
+                report.add_item(self,
+                                "{} does not support contact binaries".format(solver_kind),
+                                [self.hierarchy]+addl_parameters,
+                                True, 'run_solver')
+
+
+
             if 'use_server' in solver_ps.qualifiers and run_checks_server:
                 use_server = kwargs.get('use_server', solver_ps.get_value(qualifier='use_server', **_skip_filter_checks))
                 addl_parameters = [solver_ps.get_parameter(qualifier='use_server', **_skip_filter_checks)]
@@ -4479,6 +4514,13 @@ class Bundle(ParameterSet):
                                             +addl_parameters,
                                             True, 'run_solver')
 
+                        if np.any(sigmas==0):
+                            report.add_item(self,
+                                            "sigmas cannot contain zeros",
+                                            self.filter(qualifier=['sigmas'], dataset=dataset, component=component, context='dataset', **_skip_filter_checks)
+                                            +addl_parameters,
+                                            True, 'run_solver')
+
 
 
             if 'lc_datasets' in solver_ps.qualifiers:
@@ -4489,6 +4531,26 @@ class Bundle(ParameterSet):
                                     [solver_ps.get_parameter(qualifier='lc_datasets', **_skip_filter_checks)
                                     ]+addl_parameters,
                                     True, 'run_solver')
+
+                for dataset in lc_datasets:
+                    component = None
+                    sigmas = self.get_value(qualifier='sigmas', dataset=dataset, component=component, context='dataset', **_skip_filter_checks)
+
+                    if np.any(np.isnan(sigmas)):
+                        report.add_item(self,
+                                        "sigmas cannot contain any nans",
+                                        self.filter(qualifier=['sigmas'], dataset=dataset, component=component, context='dataset', **_skip_filter_checks)
+                                        +addl_parameters,
+                                        True, 'run_solver')
+
+                    if np.any(sigmas==0):
+                        report.add_item(self,
+                                        "sigmas cannot contain zeros",
+                                        self.filter(qualifier=['sigmas'], dataset=dataset, component=component, context='dataset', **_skip_filter_checks)
+                                        +addl_parameters,
+                                        True, 'run_solver')
+
+
             elif 'compute' in solver_ps.qualifiers:
                 lc_datasets = self.filter(dataset=self.filter(qualifier='enabled', value=True, compute=compute, context='compute', **_skip_filter_checks).datasets, kind='lc', context='dataset', **_skip_filter_checks).datasets
             else:
@@ -4502,6 +4564,28 @@ class Bundle(ParameterSet):
                                     [solver_ps.get_parameter(qualifier='rv_datasets', **_skip_filter_checks)
                                     ]+addl_parameters,
                                     True, 'run_solver')
+
+                for dataset in rv_datasets:
+                    for time_param in self.filter(qualifier='times', dataset=dataset, context='dataset', **_skip_filter_checks).to_list():
+                        component = time_param.component
+                        if not len(time_param.get_value()):
+                            continue
+                        sigmas = self.get_value(qualifier='sigmas', dataset=dataset, component=component, context='dataset', **_skip_filter_checks)
+
+                        if np.any(np.isnan(sigmas)):
+                            report.add_item(self,
+                                            "sigmas cannot contain any nans",
+                                            self.filter(qualifier=['sigmas'], dataset=dataset, component=component, context='dataset', **_skip_filter_checks)
+                                            +addl_parameters,
+                                            True, 'run_solver')
+
+                        if np.any(sigmas==0):
+                            report.add_item(self,
+                                            "sigmas cannot contain zeros",
+                                            self.filter(qualifier=['sigmas'], dataset=dataset, component=component, context='dataset', **_skip_filter_checks)
+                                            +addl_parameters,
+                                            True, 'run_solver')
+
             elif 'compute' in solver_ps.qualifiers:
                 rv_datasets = self.filter(dataset=self.filter(qualifier='enabled', value=True, compute=compute, context='compute', **_skip_filter_checks).datasets, kind='rv', context='dataset', **_skip_filter_checks).datasets
             else:
@@ -4577,19 +4661,31 @@ class Bundle(ParameterSet):
                 fit_ps = None
 
 
-            if solver_kind in ['emcee'] and solver_ps.get_value(qualifier='continue_from', continue_from=kwargs.get('continue_from', None), **_skip_filter_checks) == 'None':
-                # check to make sure twice as many params as walkers
-                nwalkers = solver_ps.get_value(qualifier='nwalkers', nwalkers=kwargs.get('nwalkers', None), **_skip_filter_checks)
+            if solver_kind in ['emcee']:
+                continue_from = solver_ps.get_value(qualifier='continue_from', continue_from=kwargs.get('continue_from', None), **_skip_filter_checks)
+                if continue_from == 'None':
+                    # check to make sure twice as many params as walkers
+                    nwalkers = solver_ps.get_value(qualifier='nwalkers', nwalkers=kwargs.get('nwalkers', None), **_skip_filter_checks)
 
-                # init_from_uniqueids should already be calculated above in call to get_distribution_collection
-                if nwalkers < 2*len(init_from_uniqueids):
-                    # TODO: double check this logic
-                    report.add_item(self,
-                                    "nwalkers must be at least 2*init_from = {}".format(2*len(init_from_uniqueids)),
-                                    [solver_ps.get_parameter(qualifier='nwalkers', **_skip_filter_checks),
-                                     solver_ps.get_parameter(qualifier='init_from', **_skip_filter_checks)
-                                    ]+addl_parameters,
-                                    True, 'run_solver')
+                    # init_from_uniqueids should already be calculated above in call to get_distribution_collection
+                    if nwalkers < 2*len(init_from_uniqueids):
+                        # TODO: double check this logic
+                        report.add_item(self,
+                                        "nwalkers must be at least 2*init_from = {}".format(2*len(init_from_uniqueids)),
+                                        [solver_ps.get_parameter(qualifier='nwalkers', **_skip_filter_checks),
+                                         solver_ps.get_parameter(qualifier='init_from', **_skip_filter_checks)
+                                        ]+addl_parameters,
+                                        True, 'run_solver')
+                else:
+                    continue_from_iter = solver_ps.get_value(qualifier='continue_from_iter', continue_from_iter=kwargs.get('continue_from_iter', None), default=-1, **_skip_filter_checks)
+                    niters = self.get_value(qualifier='niters', solution=continue_from, **_skip_filter_checks)
+                    if abs(continue_from_iter) > niters:
+                        report.add_item(self,
+                                        "abs(continue_from_iter) must not be larger than completed niters@{}={}".format(continue_from, niters),
+                                        [solver_ps.get_parameter(qualifier='continue_from_iter', **_skip_filter_checks),
+                                         solver_ps.get_parameter(qualifier='continue_from', **_skip_filter_checks),
+                                        ]+addl_parameters,
+                                        True, 'run_solver')
 
             if solver_kind in ['emcee', 'dynesty']:
                 offending_parameters = self.filter(qualifier='pblum_mode', dataset=lc_datasets+rv_datasets, value='dataset-scaled', **_skip_filter_checks)
@@ -5825,17 +5921,16 @@ class Bundle(ParameterSet):
         """
 
         func = _get_add_func(_component, kind)
-
-        fname = func.__name__
+        kind = func.__name__
 
         if kwargs.get('component', False) is None:
             # then we want to apply the default below, so let's pop for now
             _ = kwargs.pop('component')
 
         kwargs.setdefault('component',
-                          self._default_label(fname,
+                          self._default_label(kind,
                                               **{'context': 'component',
-                                                 'kind': fname}))
+                                                 'kind': kind}))
 
         if kwargs.pop('check_label', True):
             self._check_label(kwargs['component'], allow_overwrite=kwargs.get('overwrite', False))
@@ -5845,7 +5940,7 @@ class Bundle(ParameterSet):
 
         metawargs = {'context': 'component',
                      'component': kwargs['component'],
-                     'kind': fname}
+                     'kind': kind}
 
         if kwargs.get('overwrite', False):
             overwrite_ps = self.remove_component(component=kwargs['component'], during_overwrite=True)
@@ -6549,7 +6644,8 @@ class Bundle(ParameterSet):
             overwrite_ps = self.remove_dataset(dataset=kwargs['dataset'], during_overwrite=True)
             # check the label again, just in case kwargs['dataset'] belongs to
             # something other than dataset
-            self._check_label(kwargs['dataset'], allow_overwrite=False)
+            # we'll exclude the dataset as features (GPs) may still be tagged
+            self.exclude(dataset=kwargs['dataset'])._check_label(kwargs['dataset'], allow_overwrite=False)
 
         self._attach_params(params, **ds_metawargs)
 
@@ -7625,6 +7721,7 @@ class Bundle(ParameterSet):
                     changes.append(param)
         return changes
 
+
     def _add_single_distribution(self, twig=None, value=None, return_changes=False, **kwargs):
         """
         Add a distribution to an existing or new `distribution`, tagged to reference an existing
@@ -8057,7 +8154,11 @@ class Bundle(ParameterSet):
                 kwargs.setdefault('include_constrained', False)
                 kwargs.setdefault('to_univariates', False)
                 kwargs.setdefault('combine', self.get_value(qualifier='{}_combine'.format(ps.qualifier), check_visible=False, check_default=False, **{k:v for k,v in ps.meta.items() if k not in ['qualifier']}))
-                kwargs.setdefault('within_parameter_limits', True)
+
+                kwargs.setdefault('require_limits', False)
+                kwargs.setdefault('require_checks', False)
+                kwargs.setdefault('require_compute', False)
+                kwargs.setdefault('require_priors', False)
                 return self._distribution_collection_defaults(ps.get_value(expand=True, **{ps.qualifier: kwargs.get(ps.qualifier, None)}), **kwargs)
 
             elif ps.context == 'solver':
@@ -8071,11 +8172,20 @@ class Bundle(ParameterSet):
                     if ps.qualifier in ['priors']:
                         kwargs.setdefault('include_constrained', True)
                         kwargs.setdefault('to_univariates', False)
-                        kwargs.setdefault('within_parameter_limits', False)
+                        kwargs.setdefault('require_limits', False)
+                        kwargs.setdefault('require_checks', False)
+                        kwargs.setdefault('require_compute', False)
+                        kwargs.setdefault('require_priors', False)
+
                     elif ps.qualifier in ['init_from']:
                         kwargs.setdefault('include_constrained', False)
                         kwargs.setdefault('to_univariates', False)
-                        kwargs.setdefault('within_parameter_limits', True)
+
+                        requires = self.get_value(qualifier='init_from_requires', expand=True, check_visible=False, solver=ps.solver)
+                        kwargs.setdefault('require_limits', 'limits' in requires)
+                        kwargs.setdefault('require_checks', self.get_value(qualifier='compute', solver=ps.solver, **_skip_filter_checks) if 'checks' in requires else False)
+                        kwargs.setdefault('require_compute', self.get_value(qualifier='compute', solver=ps.solver, **_skip_filter_checks) if 'compute' in requires else False)
+                        kwargs.setdefault('require_priors', 'priors@{}'.format(ps.solver) if 'priors' in requires else False)
                     else:
                         raise NotImplementedError("get_distribution_collection for solver kind='{}' and qualifier='{}' not implemented".format(kind, ps.qualifier))
 
@@ -8084,7 +8194,12 @@ class Bundle(ParameterSet):
                         # TODO: need to support flattening to univariates
                         kwargs.setdefault('include_constrained', False)
                         kwargs.setdefault('to_univariates', True)
-                        kwargs.setdefault('within_parameter_limits', True)
+
+                        requires = self.get_value(qualifier='priors_requires', expand=True, check_visible=False, solver=ps.solver)
+                        kwargs.setdefault('require_limits', 'limits' in requires)
+                        kwargs.setdefault('require_checks', self.get_value(qualifier='compute', solver=ps.solver, **_skip_filter_checks) if 'checks' in requires else False)
+                        kwargs.setdefault('require_compute', self.get_value(qualifier='compute', solver=ps.solver, **_skip_filter_checks) if 'compute' in requires else False)
+                        kwargs.setdefault('require_priors', False)
                     else:
                         raise NotImplementedError("get_distribution_collection for solver kind='{}' and qualifier='{}' not implemented".format(kind, ps.qualifier))
 
@@ -8093,8 +8208,15 @@ class Bundle(ParameterSet):
                         kwargs.setdefault('include_constrained', True)
                         kwargs.setdefault('to_univariates', True)
                         kwargs.setdefault('to_uniforms', self.get_value('{}_sigma'.format(ps.qualifier), check_visible=False, check_default=False, **{k:v for k,v in ps.meta.items() if k not in ['qualifier']}))
-                        kwargs.setdefault('within_parameter_limits', False)
+                        kwargs.setdefault('require_limits', False)
 
+                elif ps.qualifier in ['priors']:
+                    kwargs.setdefault('include_constrained', True)
+                    kwargs.setdefault('to_univariates', False)
+                    kwargs.setdefault('require_limits', False)
+                    kwargs.setdefault('require_checks', False)
+                    kwargs.setdefault('require_compute', False)
+                    kwargs.setdefault('require_priors', False)
                 else:
                     raise NotImplementedError("get_distribution_collection for solver kind='{}' not implemented".format(kind))
 
@@ -8130,12 +8252,15 @@ class Bundle(ParameterSet):
         include_constrained = kwargs.get('include_constrained', False)
         to_univariates = kwargs.get('to_univariates', False)
         to_uniforms = kwargs.get('to_uniforms', False)
-        within_parameter_limits = kwargs.get('within_parameter_limits', False)
+        require_limits = kwargs.get('require_limits', False)
+        require_checks = kwargs.get('require_checks', False)
+        require_compute = kwargs.get('require_compute', False)
+        require_priors = kwargs.get('require_priors', False)
 
         if to_uniforms and not to_univariates:
             raise ValueError("to_univariates must be True in order to use to_uniforms")
 
-        return filters, combine, include_constrained, to_univariates, to_uniforms, within_parameter_limits
+        return filters, combine, include_constrained, to_univariates, to_uniforms, require_limits, require_checks, require_compute, require_priors
 
     def get_distribution_collection(self, twig=None,
                                     keys='twig', set_labels=True,
@@ -8195,11 +8320,27 @@ class Bundle(ParameterSet):
             constraints).  An error may be raised if any matching parameters
             are not included in the original DistributionCollection or available
             through propagated constraints.
-        * `within_parameter_limits` (bool, optional): whether to
-            require distribution to be within parameter limits (by including &
-            with a uniform distribution if otherwise would extend beyone limits).
-            Will default to True if `twig` points to `sample_from@compute`,
-            `init_from@emcee`, or `priors@dynesty`, otherwise will default to False.
+        * `require_limits` (bool, optional): whether to
+            require samples from the distibution(s) to be within parameter limits
+            (by including `&` with a uniform distribution if otherwise would extend
+            beyond limits).  If `twig` points to `init_from@emcee` or `priors@dynesty`,
+            will default to whether 'limits' is in the `init_from_requires` or `priors_requires`
+            parameter, respectively.  Otherwise will default to False.  Will raise
+            an error if underlying distribution is multivariate and `to_univariates=False`
+            (note: can instead pass `require_limits` to <phoebe.frontend.bundle.Bundle.sample_distribution_collection>
+            or <phoebe.frontend.bundle.Bundle.plot_distribution_collection>)
+        * `require_priors` (string, list, or False, optional): whether to
+            require samples from the distribution(s) to result in a finite
+            probability from a set of priors.  If not False, `require_priors`
+            will be passed directly as `twig` to <phoebe.frontend.bundle.Bundle.get_distribution_collection>
+            and any uniform distributions in the resulting distribution collection
+            will be combined with `&` logic (on the prior distribution itself if
+            uniform, otherwise the 1e-6 ppf of the combine prior distribution).
+            Will default to the relevant priors if `twig` points to `init_from@ecmee` and 'priors' is
+            in `init_from_requires`.  Otherwise will default to False.  Will raise
+            an error if underlying distribution is multivariate and `to_univariates=False`.
+            (note: can instead pass `require_priors` to <phoebe.frontend.bundle.Bundle.sample_distribution_collection>
+            or <phoebe.frontend.bundle.Bundle.plot_distribution_collection>)
         * `**kwargs`: additional keyword arguments are used for filtering.
             `twig` and `**kwargs` must result in either a single supported
             parameter in a solver ParameterSet, or a ParameterSet of distribution
@@ -8281,7 +8422,7 @@ class Bundle(ParameterSet):
 
 
         if 'distribution_filters' not in kwargs.keys():
-            distribution_filters, combine, include_constrained, to_univariates, to_uniforms, within_parameter_limits = self._distribution_collection_defaults(twig=twig, **kwargs)
+            distribution_filters, combine, include_constrained, to_univariates, to_uniforms, require_limits, require_checks, require_compute, require_priors = self._distribution_collection_defaults(twig=twig, **kwargs)
         else:
             # INTERNAL USE ONLY, probably
             distribution_filters = kwargs.get('distribution_filters')
@@ -8289,7 +8430,9 @@ class Bundle(ParameterSet):
             include_constrained = kwargs.get('include_constrained', True)
             to_univariates = kwargs.get('to_univariates', False)
             to_uniforms = kwargs.get('to_uniforms', False)
-            within_parameter_limits = kwargs.get('within_parameter_limits', False)
+            require_limits = kwargs.get('require_limits', False)
+            # NOTE: get_distribution_collection does not support require_checks or require_compute
+            require_priors = kwargs.get('require_priors', False)
 
         # NOTE: in python3 we could do this with booleans and nonlocal variables,
         # but for python2 support we can only fake it by mutating a dictionary.
@@ -8440,8 +8583,18 @@ class Bundle(ParameterSet):
 
         if kwargs.get('return_dc', True):
             ret_dists += [uid_dist_dict.get(uid) for uid in uniqueids]
+            if require_limits:
+                if np.any([isinstance(d, _distl.distl.BaseMultivariateSliceDistribution) for d in ret_dists]):
+                    if not kwargs.get('ignore_require_exception', False):
+                        raise ValueError("cannot use require_limits for non-univariate distributions (within get_distribution_collection).  Pass require_limits=False or to_univariates=True or sample/plot directly.")
+                    require_limits = False
+            if require_priors:
+                if np.any([isinstance(d, _distl.distl.BaseMultivariateSliceDistribution) for d in ret_dists]):
+                    if not kwargs.get('ignore_require_exception', False):
+                        raise ValueError("cannot use require_priors for non-univariate distributions (within get_distribution_collection).  Pass require_priors=False or to_univariates=True or sample/plot directly.")
+                    require_priors = False
 
-            if within_parameter_limits:
+            if require_limits:
                 for i, uniqueid in enumerate(uniqueids):
                     # check if ret_dists[i] is fully within parameter limits
                     param = self.get_parameter(uniqueid=uniqueid, **_skip_filter_checks)
@@ -8449,11 +8602,47 @@ class Bundle(ParameterSet):
                         continue
                     if np.any([np.isfinite(ret_dists[i].logpdf(limit.value)) for limit in param.limits if limit is not None]):
                         # NOTE: uniform cannot have an infinite bound, so instead we'll use the ppf at 1e-6 (or 1e-6) to get close to the original distribution limits
-                        ret_dists[i] = ret_dists[i] & _distl.uniform(param.limits[0].value if param.limits[0] is not None else ret_dists[i].ppf(1e-6), param.limits[1].value if param.limits[1] is not None else ret_dists[i].ppf(1-1e-6), unit=param.default_unit)
+                        label = ret_dists[i].label
+                        label_latex = ret_dists[i].label_latex
+                        ret_dists[i] = ret_dists[i] & _distl.uniform(param.limits[0].value if param.limits[0] is not None else ret_dists[i].ppf(1e-6), param.limits[1].value if param.limits[1] is not None else ret_dists[i].ppf(1-1e-6), label=label, unit=param.default_unit)
+                        ret_dists[i].label = label
+                        ret_dists[i].label_latex = label_latex
+
+            if require_priors:
+                priors_dc, priors_uniqueids = self.get_distribution_collection(require_priors, include_constrained=True, keys='uniqueid')
+                if np.any([(isinstance(d, _distl.distl.Composite) and d.math in ['__or__']) or isinstance(d, _distl.distl.BaseMultivariateSliceDistribution) for d in priors_dc.dists_unpacked]):
+                    # then we can still apply the ppf for the wide-bounds before sampling, but should raise an error if calling directly from get_distribution_collection
+                    if not kwargs.get('ignore_require_exception', False):
+                        raise ValueError("cannot use require_priors for priors with OR logic or multivariate covariances (within get_distribution_collection).  Pass require_priors=False or sample/plot directly.")
+                    require_priors = False
+
+                for prior, prior_uniqueid in zip(priors_dc.dists, priors_uniqueids):
+                    if prior_uniqueid not in uniqueids:
+                        # TODO: check if prior is on a parameter constrained by any parameter in the distribution
+                        require_priors = False # to return that we couldn't fully account for priors
+                        continue
+
+                    i = uniqueids.index(prior_uniqueid)
+                    param = self.get_parameter(uniqueid=prior_uniqueid, **_skip_filter_checks)
+                    label = ret_dists[i].label
+                    label_latex = ret_dists[i].label_latex
+                    if prior.__class__.__name__ == 'Uniform':
+                        # print("*** applying prior directly to {}".format(param.twig))
+                        ret_dists[i] = ret_dists[i] & prior.copy()
+                    else:
+                        # print("*** applying prior from ppf to {}".format(param.twig))
+                        require_priors = False # to return that we couldn't fully account for priors
+                        ret_dists[i] = ret_dists[i] & _distl.uniform(prior.ppf(1e-6), prior.ppf(1-1e-6), label=label, unit=param.default_unit)
+                    ret_dists[i].label = label
+                    ret_dists[i].label_latex = label_latex
+
 
             dc = _distl.DistributionCollection(*ret_dists)
         else:
             dc = None
+
+        if kwargs.get('return_require', False):
+            return dc, ret_keys, require_limits, require_priors
 
         return dc, ret_keys
 
@@ -8526,11 +8715,38 @@ class Bundle(ParameterSet):
             constraints).  An error may be raised if any matching parameters
             are not included in the original DistributionCollection or available
             through propagated constraints.
-        * `within_parameter_limits` (bool, optional): whether to
-            require distribution to be within parameter limits (by including &
-            with a uniform distribution if otherwise would extend beyone limits).
-            Will default to True if `twig` points to `sample_from@compute`,
-            `init_from@emcee`, or `priors@dynesty`, otherwise will default to False.
+        * `require_limits` (bool, optional): whether to
+            require samples from the distibution(s) to be within parameter limits
+            (by including `&` with a uniform distribution if otherwise would extend
+            beyond limits).  If `twig` points to `init_from@emcee` or `priors@dynesty`,
+            will default to whether 'limits' is in the `init_from_requires` or `priors_requires`
+            parameter, respectively.  Otherwise will default to False.
+        * `require_checks` (bool or string, optional): whether to require samples
+            from the distribution(s) to pass compute and system checks.  Any
+            drawn value that does not pass checks will be redrawn.  If True, will
+            run for all attached compute options.  If a string, will run for the
+            passed compute label.  Will default to the relevant compute label if
+            `twig` points to `init_from@emcee` or `priors@dynesty` and 'checks'
+            or 'compute' is in `init_from_requires` or `priors_requires` parameter,
+            respectively.  Otherwise will default to False.
+        * `require_compute` (bool or string, optional): whether to require samples
+            from the distribution(s) to succesfully run a forward model (and
+            therefore includes `require_checks` and `require_limits`).  Any drawn
+            value that results in an error will be redrawn.  If a string, will
+            run for the passed compute label.  True will only be allowed if a
+            single set of compute options exist.  Will default to the relevant
+            compute label if `twig` points to `init_from@emcee` or `priors@dynesty`
+            and 'compute' is in `init_from_requires` or `priors_requires` parameter,
+            respectively.  Otherwise will default to False.
+        * `require_priors` (string, list, or False, optional): whether to
+            require samples from the distribution(s) to result in a finite
+            probability from a set of priors.  If not False, `require_priors`
+            will be passed directly as `twig` to <phoebe.frontend.bundle.Bundle.get_distribution_collection>
+            and any uniform distributions in the resulting distribution collection
+            will be combined with `&` logic, if possible, or require a finite
+            probability during sampling.  Will default to the relevant
+            priors if `twig` points to `init_from@ecmee` and 'priors' is
+            in `init_from_requires`.  Otherwise will default to False.
         * `**kwargs`: additional keyword arguments are used for filtering.
             `twig` and `**kwargs` must result in either a single supported
             parameter in a solver ParameterSet, or a ParameterSet of distribution
@@ -8560,7 +8776,7 @@ class Bundle(ParameterSet):
             raise ValueError("cannot use set_value and sample_size together")
 
         if 'distribution_filters' not in kwargs.keys():
-            distribution_filters, combine, include_constrained, to_univariates, to_uniforms, within_parameter_limits = self._distribution_collection_defaults(twig=twig, **kwargs)
+            distribution_filters, combine, include_constrained, to_univariates, to_uniforms, require_limits, require_checks, require_compute, require_priors = self._distribution_collection_defaults(twig=twig, **kwargs)
         else:
             # INTERNAL USE ONLY, probably
             distribution_filters = kwargs.get('distribution_filters')
@@ -8568,7 +8784,10 @@ class Bundle(ParameterSet):
             include_constrained = kwargs.get('include_constrained', True)
             to_univariates = kwargs.get('to_univariates', False)
             to_uniforms = kwargs.get('to_uniforms', False)
-            within_parameter_limits = kwargs.get('within_parameter_limits', False)
+            require_limits = kwargs.get('require_limits', False)
+            require_checks = kwargs.get('require_checks', False)
+            require_compute = kwargs.get('require_compute', False)
+            require_priors = kwargs.get('require_priors', False)
 
         if include_constrained and set_value:
             raise ValueError("cannot use include_constrained=True and set_value together")
@@ -8577,15 +8796,23 @@ class Bundle(ParameterSet):
             user_interactive_constraints = conf.interactive_constraints
             conf.interactive_constraints_off(suppress_warning=True)
 
-        dc, uniqueids = self.get_distribution_collection(distribution_filters=distribution_filters,
+        dc, uniqueids, require_limits_success, require_priors_success = self.get_distribution_collection(distribution_filters=distribution_filters,
                                                          combine=combine,
                                                          include_constrained=include_constrained,
                                                          to_univariates=to_univariates,
                                                          to_uniforms=to_uniforms,
                                                          keys='uniqueid',
                                                          parameters=parameters,
-                                                         within_parameter_limits=within_parameter_limits,
+                                                         require_limits=require_limits or require_checks or require_compute,
+                                                         require_priors=require_priors,
+                                                         ignore_require_exception=True,
+                                                         return_require=True,
                                                          allow_non_dc=False)
+
+
+        # require_limits and require_priors are already handled in the returned
+        # objects.  But we need to TEST any sampled values are redraw if necessary
+        # according to require_checks and require_compute
 
         if isinstance(dc, _distl._distl.DistributionCollection) and np.all([isinstance(dist, _distl._distl.Delta) for dist in dc.dists]):
             if sample_size is not None and sample_size > 1:
@@ -8593,6 +8820,70 @@ class Bundle(ParameterSet):
                 N = 1
 
         sampled_values = dc.sample(size=sample_size).T
+
+        if require_checks or require_compute or (require_limits and not require_limits_success) or (require_priors and not require_priors_success):
+            def _progress(*args):
+                global _pbar
+                if _pbar is not None:
+                    _pbar.update(1)
+
+            global _pbar
+            if kwargs.get('progressbar', True):
+                _pbar = _tqdm(total=sample_size)
+            else:
+                _pbar = None
+
+
+            within_mpirun = mpi.within_mpirun
+            mpi_enabled = mpi.enabled
+
+            if kwargs.get('pool', None):
+                pool = kwargs.get('pool')
+                is_master = True
+            if mpi.within_mpirun:
+                logger.info("require conditions using MPI")
+                # print("*** require conditions using MPI")
+                pool = _pool.MPIPool()
+                is_master = pool.is_master()
+
+                # temporarily disable MPI within run_compute to disabled parallelizing
+                # per-time.
+                mpi._within_mpirun = False
+                mpi._enabled = False
+
+            elif conf.multiprocessing_nprocs==0 or sample_size == 1:
+                logger.info("require conditions: serial mode")
+                # print("*** require conditions: serial mode")
+                pool = _pool.SerialPool()
+                is_master = True
+            else:
+                logger.info("require conditions using multiprocessing with {} procs".format(conf.multiprocessing_nprocs))
+                # print("*** require conditions using multiprocessing with {} procs".format(conf.multiprocessing_nprocs))
+                pool = _pool.MultiPool(processes=conf._multiprocessing_nprocs)
+                is_master = True
+
+            if is_master:
+                if sample_size is None:
+                    sampled_values_T = [sampled_values.T]
+                else:
+                    sampled_values_T = sampled_values.T
+                allow_retries = 25 # allow 25 attempts per-sample, or raise an error
+                args_per_sample = [(self.copy(), uniqueids, sample_per_param, dc, require_priors, require_compute, require_checks, allow_retries) for sample_per_param in sampled_values_T]
+                sampled_values = np.asarray(list(pool.map(backends._test_single_sample, args_per_sample, callback=_progress))).T
+                if sample_size is None:
+                    sampled_values = sampled_values[:,0]
+                if _pbar is not None:
+                    _pbar.close()
+            else:
+                pool.wait()
+                return
+
+            # restore previous MPI state
+            mpi._within_mpirun = within_mpirun
+            mpi._enabled = mpi_enabled
+
+            if pool is not None and 'pool' not in kwargs.keys():
+                pool.close()
 
         ret = {}
         changed_params = []
@@ -8614,6 +8905,8 @@ class Bundle(ParameterSet):
             if user_interactive_constraints:
                 conf.interactive_constraints_on()
             return _return_ps(self, ParameterSet(changed_params))
+        elif kwargs.get('return_dc_uniqueids_array', False):
+            return dc, uniqueids, sampled_values
         else:
             # ret is a dictionary
             return ret
@@ -8671,11 +8964,38 @@ class Bundle(ParameterSet):
             constraints).  An error may be raised if any matching parameters
             are not included in the original DistributionCollection or available
             through propagated constraints.
-        * `within_parameter_limits` (bool, optional): whether to
-            require distribution to be within parameter limits (by including &
-            with a uniform distribution if otherwise would extend beyone limits).
-            Will default to True if `twig` points to `sample_from@compute`,
-            `init_from@emcee`, or `priors@dynesty`, otherwise will default to False.
+        * `require_limits` (bool, optional): whether to
+            require samples from the distibution(s) to be within parameter limits
+            (by including `&` with a uniform distribution if otherwise would extend
+            beyond limits).  If `twig` points to `init_from@emcee` or `priors@dynesty`,
+            will default to whether 'limits' is in the `init_from_requires` or `priors_requires`
+            parameter, respectively.  Otherwise will default to False.
+        * `require_checks` (bool or string, optional): whether to require samples
+            from the distribution(s) to pass compute and system checks.  Any
+            drawn value that does not pass checks will be redrawn.  If True, will
+            run for all attached compute options.  If a string, will run for the
+            passed compute label.  Will default to the relevant compute label if
+            `twig` points to `init_from@emcee` or `priors@dynesty` and 'checks'
+            or 'compute' is in `init_from_requires` or `priors_requires` parameter,
+            respectively.  Otherwise will default to False.
+        * `require_compute` (bool or string, optional): whether to require samples
+            from the distribution(s) to succesfully run a forward model (and
+            therefore includes `require_checks` and `require_limits`).  Any drawn
+            value that results in an error will be redrawn.  If a string, will
+            run for the passed compute label.  True will only be allowed if a
+            single set of compute options exist.  Will default to the relevant
+            compute label if `twig` points to `init_from@emcee` or `priors@dynesty`
+            and 'compute' is in `init_from_requires` or `priors_requires` parameter,
+            respectively.  Otherwise will default to False.
+        * `require_priors` (string, list, or False, optional): whether to
+            require samples from the distribution(s) to result in a finite
+            probability from a set of priors.  If not False, `require_priors`
+            will be passed directly as `twig` to <phoebe.frontend.bundle.Bundle.get_distribution_collection>
+            and any uniform distributions in the resulting distribution collection
+            will be combined with `&` logic, if possible, or require a finite
+            probability during sampling.  Will default to the relevant
+            priors if `twig` points to `init_from@ecmee` and 'priors' is
+            in `init_from_requires`.  Otherwise will default to False.
         * `plot_uncertainties` (bool or list, optional, default=True): whether
             to plot uncertainties (as contours on 2D plots, vertical lines
             on histograms, and in the axes titles).  If True, defaults to `[1,2,3]`.
@@ -8703,8 +9023,29 @@ class Bundle(ParameterSet):
                 plot_kwargs[k] = kwargs.pop(k)
             elif k == 'sample_size':
                 plot_kwargs['size'] = kwargs.pop('sample_size')
-        dc, _ = self.get_distribution_collection(twig=twig, set_labels=set_labels, keys='uniqueid', parameters=parameters, **kwargs)
-        return dc.plot(show=show, **plot_kwargs)
+
+        distribution_filters, combine, include_constrained, to_univariates, to_uniforms, require_limits, require_checks, require_compute, require_priors = self._distribution_collection_defaults(twig=twig, **kwargs)
+
+        if require_checks or require_compute or require_priors:
+            dc, uniqueids, require_limits_success, require_priors_success = self.get_distribution_collection(twig=twig, set_labels=set_labels, keys='uniqueid', parameters=parameters, ignore_require_exception=True, return_require=True, **kwargs)
+            if require_checks or require_compute or (require_priors and not require_priors_success):
+                plot_kwargs.setdefault('size', 500)
+        else:
+            samples = None
+            dc, uniqueids = self.get_distribution_collection(twig=twig, set_labels=set_labels, keys='uniqueid', parameters=parameters, **kwargs)
+
+        if 'size' not in plot_kwargs.keys():
+            ps = self.filter(uniqueid=uniqueids, **_skip_filter_checks)
+            constraint_funcs = [p.is_constraint.constraint_func for p in ps.to_list() if p.is_constraint is not None]
+            if np.any([cf in ['requiv_detached_max', 'requiv_single_max', 'requiv_contact_min'] for cf in constraint_funcs]):
+                plot_kwargs.setdefault('size', 1e3)
+
+        if require_checks or require_compute or (require_priors and not require_priors_success):
+            _, _, samples = self.sample_distribution_collection(twig=twig, parameters=parameters, sample_size=int(plot_kwargs.get('size', int(1e3))), return_dc_uniqueids_array=True, **kwargs)
+        else:
+            samples = None
+
+        return dc.plot(samples=samples.T if samples is not None else None, show=show, **plot_kwargs)
 
     def uncertainties_from_distribution_collection(self, twig=None,
                                                    parameters=None,
@@ -8762,11 +9103,21 @@ class Bundle(ParameterSet):
             constraints).  An error may be raised if any matching parameters
             are not included in the original DistributionCollection or available
             through propagated constraints.
-        * `within_parameter_limits` (bool, optional): whether to
-            require distribution to be within parameter limits (by including &
-            with a uniform distribution if otherwise would extend beyone limits).
-            Will default to True if `twig` points to `sample_from@compute`,
-            `init_from@emcee`, or `priors@dynesty`, otherwise will default to False.
+        * `require_limits` (bool, optional): whether to
+            require samples from the distibution(s) to be within parameter limits
+            (by including `&` with a uniform distribution if otherwise would extend
+            beyond limits).  If `twig` points to `init_from@emcee` or `priors@dynesty`,
+            will default to whether 'limits' is in the `init_from_requires` or `priors_requires`
+            parameter, respectively.  Otherwise will default to False.
+        * `require_priors` (string, list, or False, optional): whether to
+            require samples from the distribution(s) to result in a finite
+            probability from a set of priors.  If not False, `require_priors`
+            will be passed directly as `twig` to <phoebe.frontend.bundle.Bundle.get_distribution_collection>
+            and any uniform distributions in the resulting distribution collection
+            will be combined with `&` logic, if possible, or require a finite
+            probability during sampling.  Will default to the relevant
+            priors if `twig` points to `init_from@ecmee` and 'priors' is
+            in `init_from_requires`.  Otherwise will default to False.
         * `**kwargs`: all additional keyword arguments are passed directly to
             <phoebe.frontend.bundle.Bundle.get_distribution_collection>.
 
@@ -8852,12 +9203,13 @@ class Bundle(ParameterSet):
                                                          **kwargs)
 
         # uniqueids needs to correspond to dc.dists_unpacked, not dc.dists
-        if len(dc.dists_unpacked) != len(uniqueids):
+        if len(dc.dists_unpacked) == len(uniqueids):
+            values = [self.get_value(uniqueid=uid, unit=dist.unit, **_skip_filter_checks) for uid, dist in zip(uniqueids, dc.dists_unpacked)]
+        elif len(dc.dists) == len(uniqueids):
+            values = [self.get_value(uniqueid=uid, unit=dist.unit, **_skip_filter_checks) for uid, dist in zip(uniqueids, dc.dists)]
+        else:
             ps = self.exclude(context=['distribution', 'constraint'], **_skip_filter_checks)
             values = [ps.get_value(twig=dist.label, unit=dist.unit, **_skip_filter_checks) for dist in dc.dists_unpacked]
-        else:
-            # then we can do the faster lookup by uniqueid
-            values = [self.get_value(uniqueid=uid, unit=dist.unit, **_skip_filter_checks) for uid, dist in zip(uniqueids, dc.dists_unpacked)]
 
         try:
             return dc.logpdf(values, as_univariates=False)
@@ -9198,19 +9550,18 @@ class Bundle(ParameterSet):
         """
 
         func = _get_add_func(_figure, kind)
-
-        fname = func.__name__
+        kind = func.__name__
 
         if kwargs.get('figure', False) is None:
             # then we want to apply the default below, so let's pop for now
             _ = kwargs.pop('figure')
 
 
-        default_label_base = {'distribution_collection': 'dc'}.get(fname, fname)
+        default_label_base = {'distribution_collection': 'dc'}.get(kind, kind)
         kwargs.setdefault('figure',
                           self._default_label(default_label_base+'fig',
                                               **{'context': 'figure',
-                                                 'kind': fname}))
+                                                 'kind': kind}))
 
         if kwargs.pop('check_label', True):
             self._check_label(kwargs['figure'], allow_overwrite=kwargs.get('overwrite', False))
@@ -9222,7 +9573,7 @@ class Bundle(ParameterSet):
 
         metawargs = {'context': 'figure',
                      'figure': kwargs['figure'],
-                     'kind': fname}
+                     'kind': kind}
 
         if kwargs.get('overwrite', False):
             overwrite_ps = self.remove_figure(figure=kwargs['figure'], during_overwrite=True)
@@ -10537,6 +10888,34 @@ class Bundle(ParameterSet):
             for envelope in self.hierarchy.get_envelopes():
                 self.set_value(qualifier='ntriangles', compute=kwargs['compute'], component=envelope, value=3000, check_visible=False)
 
+        for k,v in kwargs.items():
+            # if just a value, should already have been applied
+            if isinstance(v, dict):
+                for twig, value in v.items():
+                    ps = self.filter(qualifier=k,
+                                     compute=kwargs['compute'],
+                                     check_visible=False,
+                                     check_default=False,
+                                     ignore_none=True)
+
+                    if len(ps.filter(twig, check_visible=False, check_default=False).to_list()) >= 1:
+                        logger.debug("setting value of compute parameter: qualifier={}, twig={}, value={}".format(k, twig, value))
+                        try:
+                            self.set_value_all(twig,
+                                               qualifier=k,
+                                               compute=kwargs['compute'],
+                                               value=value,
+                                               check_visible=False,
+                                               check_default=False,
+                                               ignore_none=True)
+                        except Exception as err:
+                            self.remove_compute(compute=kwargs['compute'])
+                            raise ValueError("could not set value for {}={} with error: '{}'. Compute has not been added".format(k, v, str(err)))
+                    else:
+                        self.remove_compute(compute=kwargs['compute'])
+                        raise ValueError("could not set value for {}={}.  No valid match found for '{}' in {}.  Compute has not been added".format(k, v, twig, ps.twigs))
+
+
         ret_ps = self.get_compute(check_visible=False, check_default=False, **metawargs)
 
         # since we've already processed (so that we can get the new qualifiers),
@@ -10684,7 +11063,7 @@ class Bundle(ParameterSet):
         if model in self.models and kwargs.get('overwrite', model=='latest'):
             # NOTE: default (instead of detached_job=) is correct here
             if self.get_value(qualifier='detached_job', model=model, context='model', default='loaded') not in ['loaded', 'error', 'killed']:
-                raise ValueError("model '{}' cannot be overwritten until it is complete and loaded.".format(model))
+                raise ValueError("model '{}' cannot be overwritten until it is complete and loaded (or killed).".format(model))
             if model=='latest':
                 logger.warning("overwriting model: {}".format(model))
             else:
@@ -10902,7 +11281,7 @@ class Bundle(ParameterSet):
             script.append("phoebe.logger('{}');".format(log_level))
         # TODO: can we skip other models
         # or datasets (except times and only for run_compute but not run_solver)
-        exclude_qualifiers = ['detached_job']
+        exclude_qualifiers = ['detached_job', 'failed_samples']
         exclude_contexts = ['model', 'figure', 'constraint', 'solver']  # NOTE: need server for kwargs check on use_server
         sample_from = self.get_value(qualifier='sample_from', compute=compute, sample_from=kwargs.get('sample_from', None), default=[], expand=True)
         exclude_distributions = [dist for dist in self.distributions if dist not in sample_from]
@@ -11615,7 +11994,7 @@ class Bundle(ParameterSet):
                         # NOTE: this is already in run_checks_compute, so this error
                         # should never be raised
                         if not _use_celerite:
-                            raise ImportError("gaussian processes require celerite2 or celerite to be installed")
+                            raise ImportError("gaussian processes require celerite to be installed.  Install (pip install celerite) and restart phoebe.")
 
                         # NOTE: only those exposed in feature.gaussian_process
                         # will be available to the user (we don't allow jitter, for example)
@@ -11656,9 +12035,13 @@ class Bundle(ParameterSet):
                             model_x = model_ps.get_value(qualifier=xqualifier, dataset=ds, component=ds_comp, **_skip_filter_checks)
                             ds_sigmas = ds_ps.get_value(qualifier='sigmas', component=ds_comp, **_skip_filter_checks)
                             # TODO: do we need to inflate sigmas by lnf?
+                            if not len(ds_x):
+                                # should have been caught by run_checks_compute
+                                raise ValueError("gaussian_process requires dataset observations (cannot be synthetic only).  Add observations to dataset='{}' or disable feature={}".format(ds, gp_features))
                             if len(ds_sigmas) != len(ds_x):
                                 raise ValueError("gaussian_process requires sigma of same length as {}".format(xqualifier))
-                            gp_kernel.compute(ds_x, yerr=ds_sigmas, check_sorted=True)
+
+                            gp_kernel.compute(ds_x, ds_sigmas, check_sorted=True)
 
                             residuals, model_y_dstimes = self.calculate_residuals(model=model, dataset=ds, component=ds_comp, return_interp_model=True, as_quantity=False, consider_gaussian_process=False)
                             gp_y = gp_kernel.predict(residuals, ds_x, return_cov=False)
@@ -12202,6 +12585,7 @@ class Bundle(ParameterSet):
         ret_changes += self._handle_compute_choiceparams(return_changes=return_changes)
         ret_changes += self._handle_solver_choiceparams(return_changes=return_changes)
         ret_changes += self._handle_solver_selectparams(return_changes=return_changes)
+        ret_changes += self._handle_solution_choiceparams(return_changes=return_changes)
         ret_changes += self._handle_fitparameters_selecttwigparams(return_changes=return_changes)
         ret_changes += self._handle_dataset_selectparams(return_changes=return_changes)
         ret_changes += self._handle_orbit_choiceparams(return_changes=return_changes)
@@ -12417,7 +12801,7 @@ class Bundle(ParameterSet):
             script.append("phoebe.logger('{}');".format(log_level))
         # TODO: can we skip other models
         # or datasets (except times and only for run_compute but not run_solver)
-        exclude_qualifiers = ['detached_job']
+        exclude_qualifiers = ['detached_job', 'failed_samples']
         exclude_contexts = ['model', 'figure'] # NOTE: need server for kwargs check on use_server
         continue_from = self.get_value(qualifier='continue_from', solver=solver, continue_from=kwargs.get('continue_from', None), default='')
         exclude_solutions = [sol for sol in self.solutions if sol!=continue_from]
@@ -12549,7 +12933,7 @@ class Bundle(ParameterSet):
         """
         use_server = kwargs.get('use_server', kwargs.get('server', self.get_value(qualifier='use_server', solver=solver, context='solver', **_skip_filter_checks)))
         if use_server == 'compute':
-            use_server = self.get_value(qualifier='use_server', compute=self.get_value(qualifier='compute', solver=solver, context='solver', **_skip_filter_checks), **_skip_filter_checks)
+            use_server = self.get_value(qualifier='use_server', compute=self.get_value(qualifier='compute', solver=solver, context='solver', **_skip_filter_checks), context='compute', **_skip_filter_checks)
 
         solver, solution, compute, solver_ps = self._prepare_solver(solver, solution, from_export=True, **kwargs)
         script_fname, out_fname = self._write_export_solver_script(script_fname, out_fname, solver, solution, autocontinue, use_server, import_from_older, log_level, kwargs)
@@ -13454,7 +13838,7 @@ class Bundle(ParameterSet):
 
         self._attach_params(result_ps, override_tags=True, new_uniqueids=new_uniqueids, **metawargs)
 
-        ret_ps = self.get_solution(solution=solution if solution is not None else result_ps.solutions)
+        ret_ps = self.get_solution(solution=solution if solution is not None else result_ps.solutions, **_skip_filter_checks)
 
         # attempt to map fitted_twigs -> fitted_uniqueids if not all match now, to prevent having to continuously repeat
         fitted_uniqueids = ret_ps.get_value(qualifier='fitted_uniqueids', **_skip_filter_checks)

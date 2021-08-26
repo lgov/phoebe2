@@ -171,6 +171,11 @@ class Passband:
         ---------
         * an instatiated <phoebe.atmospheres.passbands.Passband> object.
         """
+        if "'" in pbset or '"' in pbset:
+            raise ValueError("pbset cannot contain quotation marks")
+        if "'" in pbname or '"' in pbname:
+            raise ValueError("pbset cannot contain quotation marks")
+
         self.h = h.value
         self.c = c.value
         self.k = k_B.value
@@ -2759,6 +2764,10 @@ class Passband:
         * NotImplementedError: if `ld_func` is not supported.
         """
         # TODO: improve docstring
+
+        # make sure we're not suffering from rounding issues in mu:
+        mu[np.isclose(mu, 1)] = 1-1e-12
+        mu[np.isclose(mu, 0)] = 1e-12
 
         if ld_func == 'interp':
             # The 'interp' LD function works only for model atmospheres:

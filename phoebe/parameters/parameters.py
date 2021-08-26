@@ -32,6 +32,7 @@ from fnmatch import fnmatch
 from copy import deepcopy as _deepcopy
 import readline
 import numpy as np
+from scipy.stats import norm as _norm
 
 import json
 # try:
@@ -253,7 +254,7 @@ _forbidden_labels += ['enabled', 'dynamics_method', 'ltte', 'comments',
                       ]
 
 # from solver:
-_forbidden_labels += ['nwalkers', 'niters', 'priors', 'init_from',
+_forbidden_labels += ['nwalkers', 'niters', 'priors', 'priors_requires', 'init_from', 'init_from_requires',
                       'lc_datasets', 'rv_datasets', 'lc_combine',
                       'phase_bin', 'phase_nbins',
                       'algorithm', 'duration', 'minimum_n_cycles', 'frequency_factor',
@@ -263,8 +264,8 @@ _forbidden_labels += ['nwalkers', 'niters', 'priors', 'init_from',
                       'expose_model', 'gtol', 'norm', 'xtol', 'ftol',
                       'priors_combine', 'maxiter', 'maxfev', 'adaptive',
                       'xatol', 'fatol', 'bounds', 'bounds_combine', 'bounds_sigma',
-                      'strategy', 'popsize', 'continue_from', 'init_from_combine',
-                      'burnin_factor', 'thin_factor', 'progress_every_niters',
+                      'strategy', 'popsize', 'continue_from', 'continue_from_iter', 'init_from_combine',
+                      'burnin_factor', 'thin_factor', 'nlags_factor', 'progress_every_niters',
                       'nlive', 'maxcall', 'lc_geometry', 'rv_geometry', 'lc_periodogram', 'rv_periodogram', 'ebai',
                       'nelder_mead', 'differential_evolution', 'cg', 'powell', 'emcee', 'dynesty']
 
@@ -276,7 +277,7 @@ _forbidden_labels += ['primary_width', 'secondary_width',
                       'fitted_uniqueids', 'fitted_twigs', 'fitted_values', 'fitted_units',
                       'adopt_parameters', 'adopt_distributions', 'distributions_convert', 'distributions_bins',
                       'failed_samples', 'lnprobabilities', 'acceptance_fractions',
-                      'autocorr_time', 'burnin', 'thin', 'lnprob_cutoff',
+                      'autocorr_time', 'burnin', 'thin', 'lnprob_cutoff', 'nlags',
                       'progress',
                       'period_factor', 'power',
                       'nlive', 'niter', 'ncall', 'eff', 'samples', 'samples_id', 'samples_it', 'samples_u',
@@ -324,7 +325,7 @@ _twig_delims = ' \t\n`~!#$%^&)-=+]{}\\|;,<>/:'
 
 
 _singular_to_plural = {'time': 'times', 'phase': 'phases', 'flux': 'fluxes', 'sigma': 'sigmas',
-                       'rv': 'rvs', 'flux_density': 'flux_densities',
+                       'rv': 'rvs', 'wavelength': 'wavelengths', 'flux_density': 'flux_densities',
                        'time_ecl': 'time_ecls', 'time_ephem': 'time_ephems', 'N': 'Ns',
                        'x': 'xs', 'y': 'ys', 'z': 'zs', 'vx': 'vxs', 'vy': 'vys',
                        'vz': 'vzs', 'nx': 'nxs', 'ny': 'nys', 'nz': 'nzs',
@@ -2917,7 +2918,7 @@ class ParameterSet(object):
 
         return _return(params, force_ps, method, mindex)
 
-    def exclude(self, twig=None, check_visible=True, check_default=True, **kwargs):
+    def exclude(self, twig=None, check_visible=False, check_default=False, **kwargs):
         """
         Exclude the results from this filter from the current
         <phoebe.parameters.ParameterSet>.
@@ -2936,12 +2937,12 @@ class ParameterSet(object):
             into any of the meta-tags.  Example: instead of
             `b.filter(context='component', component='starA')`, you
             could do `b.filter('starA@component')`.
-        * `check_visible` (bool, optional, default=True): whether to hide invisible
-            parameters.  These are usually parameters that do not
+        * `check_visible` (bool, optional, default=False): whether to NOT exclude
+            invisible parameters.  These are usually parameters that do not
             play a role unless the value of another parameter meets
             some condition.
-        * `check_default` (bool, optional, default=True): whether to exclude parameters which
-            have a _default tag (these are parameters which solely exist
+        * `check_default` (bool, optional, default=False): whether to NOT
+            exclude parameters which have a _default tag (these are parameters which solely exist
             to provide defaults for when new parameters or datasets are
             added and the parameter needs to be copied appropriately).
             Defaults to True.
@@ -3190,13 +3191,7 @@ class ParameterSet(object):
 
         param = self.get_parameter(twig=twig, **kwargs)
 
-        if param.qualifier in kwargs.keys():
-            # then we have an "override" value that was passed, and we should
-            # just return that.
-            # Example b.get_value('teff', teff=6000) returns 6000
-            return kwargs.get(param.qualifier)
-
-        return param.get_quantity(unit=unit, t=t)
+        return param.get_quantity(unit=unit, t=t, **{k: v for k,v in kwargs.items() if k==param.qualifier})
 
     def set_quantity(self, twig=None, value=None, **kwargs):
         """
@@ -3528,7 +3523,7 @@ class ParameterSet(object):
                 unit = twig
                 twig = None
 
-            elif not len(self.filter(twig=twig, check_default=check_default, **kwargs)):
+            elif not len(self.filter(twig=twig, **kwargs)):
                 unit = twig
                 twig = None
 
@@ -3594,6 +3589,16 @@ class ParameterSet(object):
                 twig = None
 
         ps = self.filter(twig=twig, **kwargs)
+
+        # ensure all parameters are float parameters and can set to the passed unit
+        not_units = [param.twig for param in ps.to_list() if not hasattr(param, 'default_unit')]
+        if len(not_units):
+            raise ValueError("all matching parameters must have units.  The following are not: {}".format(not_units))
+
+        not_valid = [param.twig for param in ps.to_list() if unit not in param.get_valid_units()]
+        if len(not_valid):
+            raise ValueError("{} must be a valid unit for all matching parameters.  {} is not valid for: {}".format(unit, unit, not_valid))
+
         for param in ps.to_list():
             param.set_default_unit(unit)
 
@@ -3716,8 +3721,15 @@ class ParameterSet(object):
             raise NotImplementedError("calculate_residuals not implemented for dataset with kind='{}' (model={}, dataset={}, component={})".format(dataset_kind, model, dataset, component))
 
 
-        dataset_param = dataset_ps.get_parameter(qualifier, component=component, **_skip_filter_checks)
-        model_param = model_ps.get_parameter(qualifier, **_skip_filter_checks)
+        dataset_param_ps = dataset_ps.filter(qualifier=qualifier, component=component, **_skip_filter_checks)
+        if len(dataset_param_ps.to_list()) > 1:
+            raise ValueError("filter (dataset={}, qualifier={}, component={}) resulted in more than one parameter".format(dataset_ps.dataset, qualifier, component))
+        elif len(dataset_param_ps.to_list()) == 0:
+            raise ValueError("filter (dataset={}, qualifier={}, component={}) resulted in no parameters".format(dataset_ps.dataset, qualifier, component))
+        else:
+            dataset_param = dataset_param_ps.to_list()[0]
+        dataset_param = dataset_ps.get_parameter(qualifier=qualifier, component=component, **_skip_filter_checks)
+        model_param = model_ps.get_parameter(qualifier=qualifier, **_skip_filter_checks)
 
         # TODO: do we need to worry about conflicting units?
         # NOTE: this should automatically handle interpolating in phases, if necessary
@@ -3735,6 +3747,22 @@ class ParameterSet(object):
             else:
                 return residuals
 
+        if not len(dataset_param.get_value()) == len(times):
+            if len(dataset_param.get_value())==0:
+                # then the dataset was empty, so let's just return an empty array
+                if return_interp_model:
+                    if as_quantity:
+                        return np.asarray([]) * dataset_param.default_unit, np.asarray([]) * dataset_param.default_unit
+                    else:
+                        return np.asarray([]), np.asarray([])
+                else:
+                    if as_quantity:
+                        return np.asarray([]) * dataset_param.default_unit
+                    else:
+                        return np.asarray([])
+            else:
+                raise ValueError("{}@{}@{} and {}@{}@{} do not have the same length, cannot compute residuals".format(qualifier, component, dataset, 'times', component, dataset))
+
         mask_enabled = dataset_ps.get_value(qualifier='mask_enabled', default=False, mask_enabled=mask_enabled, **_skip_filter_checks)
         if mask_enabled:
             mask_phases = dataset_ps.get_value(qualifier='mask_phases', mask_phases=mask_phases, **_skip_filter_checks)
@@ -3748,15 +3776,6 @@ class ParameterSet(object):
 
                 times = times[inds]
 
-        elif not len(dataset_param.get_value()) == len(times):
-            if len(dataset_param.get_value())==0:
-                # then the dataset was empty, so let's just return an empty array
-                if as_quantity:
-                    return np.asarray([]) * dataset_param.default_unit
-                else:
-                    return np.asarray([])
-            else:
-                raise ValueError("{}@{}@{} and {}@{}@{} do not have the same length, cannot compute residuals".format(qualifier, component, dataset, 'times', component, dataset))
 
         if dataset_param.default_unit != model_param.default_unit:
             raise ValueError("model and dataset do not have the same default_unit, cannot interpolate")
@@ -4923,10 +4942,12 @@ class ParameterSet(object):
                 styles = [styles]
 
             return_ = []
-            for style in styles:
-                kwargs = _deepcopy(kwargs)
+            c = kwargs.get('c', None)
+            kwargs_orig = _deepcopy(kwargs)
 
+            for style in styles:
                 if style in ['corner', 'failed']:
+                    kwargs = _deepcopy(kwargs_orig)
                     kwargs['plot_package'] = 'distl'
                     if 'parameters' in kwargs.keys() and style=='failed':
                         raise ValueError("cannot currently plot failed_samples while providing parameters.  Pass or set adopt_parameters to plot a subset of available parameters")
@@ -4942,11 +4963,13 @@ class ParameterSet(object):
 
                     return_ += [kwargs]
 
-                elif style in ['lnprobability', 'lnprob', 'lnprobabilities']:
-                    kwargs['plot_package'] = 'autofig'
-                    kwargs['autofig_method'] = 'plot'
-                    kwargs.setdefault('marker', 'None')
-                    kwargs.setdefault('linestyle', 'solid')
+                elif style in ['lnprobability', 'lnprob', 'lnprobabilities', 'lnprobabilities_spread', 'spread_lnprobabilities']:
+                    # official style: lnprobabilities, lnprobabilities_spread
+                    kwargs_style = _deepcopy(kwargs_orig)
+                    kwargs_style['plot_package'] = 'autofig'
+                    kwargs_style['autofig_method'] = 'plot'
+                    kwargs_style.setdefault('marker', 'None')
+                    kwargs_style.setdefault('linestyle', 'solid')
 
                     lnprobabilities_proc, samples_proc = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, thin, -np.inf, adopt_inds, flatten=False)
 
@@ -4954,99 +4977,44 @@ class ParameterSet(object):
                     lnprobabilities_proc = _deepcopy(lnprobabilities_proc)
                     lnprobabilities_proc[lnprobabilities_proc < lnprob_cutoff] = np.nan
 
-                    c = kwargs.get('c', None)
                     if c is not None:
                         fitted_uniqueids = self._bundle.get_value(qualifier='fitted_uniqueids', context='solution', solution=ps.solution, **_skip_filter_checks)
                         fitted_ps = self._bundle.filter(uniqueid=list(fitted_uniqueids), **_skip_filter_checks)
                         _, samples_proc_all = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, thin, -np.inf, flatten=False)
 
-                    kwargs_orig = _deepcopy(kwargs)
-                    for walker_ind, lnp in enumerate(lnprobabilities_proc.T):
-                        if not np.any(np.isfinite(lnp)):
-                            continue
 
-                        if np.all(np.isnan(lnp)):
-                            continue
+                    kwargs_style['x'] = np.arange(lnprobabilities_proc.shape[0], dtype=float)*thin+burnin
+                    kwargs_style['xlabel'] = 'iteration (burnin={}, thin={})'.format(burnin, thin)
+                    kwargs_style['ylabel'] = 'lnprobability' if lnprob_cutoff==-np.inf else 'lnprobability (lnprob_cutoff={})'.format(lnprob_cutoff)
 
-                        kwargs = _deepcopy(kwargs_orig)
-                        kwargs['x'] = np.arange(len(lnp), dtype=float)*thin+burnin
-                        kwargs['xlabel'] = 'iteration (burnin={}, thin={})'.format(burnin, thin)
-                        kwargs['y'] = lnp
-                        kwargs['ylabel'] = 'lnprobability' if lnprob_cutoff==-np.inf else 'lnprobability (lnprob_cutoff={})'.format(lnprob_cutoff)
 
-                        if c is None:
-                            pass
-                        elif len(fitted_ps.filter(twig=c, **_skip_filter_checks).to_list()):
-                            match_params = fitted_ps.filter(twig=c, **_skip_filter_checks)
-                            if len(match_params) > 1:
-                                raise ValueError("c={} matches more than one valid parameter ({})".format(c, match_params.twigs))
-                            match_param = match_params.get_parameter()
-                            # TODO: allow to plot from outside adopt_parameters?
-                            match_ind = list(fitted_uniqueids).index(match_param.uniqueid)
-                            kwargs['c'] = samples_proc_all[:, walker_ind, match_ind]
-                            kwargs['clabel'] = match_param.twig
-                            kwargs['cqualifier'] = match_param.qualifier
-                        else:
-                            # assume named color?
-                            kwargs['c'] = c
+                    if 'spread' in style:
+                        kwargs = _deepcopy(kwargs_style)
 
-                        # TODO: support for c = twig
-                        return_ += [kwargs]
+                        if c is not None:
+                            kwargs['c'] = c if c not in ['lnprobablities'] + fitted_ps.qualifiers and '@' not in c else 'black'
+                        kwargs.setdefault('c', 'black')
+                        kwargs['y'] = np.median(lnprobabilities_proc, axis=1)
 
-                elif style in ['trace', 'walks']:
-                    kwargs['plot_package'] = 'autofig'
-                    if 'parameters' in kwargs.keys():
-                        raise ValueError("cannot currently plot {} while providing parameters.  Pass or set adopt_parameters to plot a subset of available parameters".format(style))
-                    kwargs['autofig_method'] = 'plot'
-                    kwargs.setdefault('marker', 'None')
-                    kwargs.setdefault('linestyle', 'solid')
-
-                    fitted_uniqueids = self._bundle.get_value(qualifier='fitted_uniqueids', context='solution', solution=ps.solution, **_skip_filter_checks)
-                    # fitted_twigs = self._bundle.get_value(qualifier='fitted_twigs', context='solution', solution=ps.solution, **_skip_filter_checks)
-                    fitted_units = self._bundle.get_value(qualifier='fitted_units', context='solution', solution=ps.solution, **_skip_filter_checks)
-                    fitted_ps = self._bundle.filter(uniqueid=list(fitted_uniqueids), **_skip_filter_checks)
-                    lnprobabilities_proc, samples_proc = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, thin, lnprob_cutoff, adopt_inds, flatten=False)
-
-                    # samples [niters, nwalkers, parameter]
-                    # allow user override of which parameter(s) to include
-                    # but in order to handle the possibility of indexes in array parameters
-                    # we need to find the matches in adopt_uniqueids which includes the index
-                    if kwargs.get('y', None):
-                        y = kwargs.get('y')
-                        if isinstance(ys, str):
-                            ys = [ys]
-
-                        # ys are currently assumed to twigs (with or without indices)
-                        # we need a list of uniqueids, including indices when necessary
-                        def _uniqueids_for_y(fitted_ps, twig=None):
-                            y, index = _extract_index_from_string(y)
-                            p = fitted_ps.get_parameter(twig=y, **_skip_filter_checks)
-                            if index is None:
-                                if p.__class__.__name__ == 'FloatArrayParameter':
-                                    return ['{}[{}]'.format(p.uniqueid, i) for i in range(len(p.get_value()))]
-                                else:
-                                    return [p.uniqueid]
-                            else:
-                                return ['{}[{}]'.format(p.uniqueid, index)]
-
-                        plot_uniqueids = []
-                        for y in ys:
-                            plot_uniqueids += _uniqueids_for_y(fitted_ps, y)
+                        spread_kwargs = _deepcopy(kwargs)
+                        sigma = kwargs.get('spread_sigma', 1)
+                        bounds = np.percentile(lnprobabilities_proc, 100 * _norm.cdf([-sigma, 0, sigma]), axis=1)
+                        spread_kwargs['autofig_method'] = 'fill_between'
+                        spread_kwargs['y'] = bounds.T
+                        spread_kwargs['alpha'] = 0.3
+                        return_ += [kwargs, spread_kwargs]
 
                     else:
-                        plot_uniqueids = adopt_uniqueids
+                        for walker_ind, lnp in enumerate(lnprobabilities_proc.T):
+                            if not np.any(np.isfinite(lnp)):
+                                continue
 
-                    c = kwargs.get('c', None)
-                    if c is not None:
-                        _, samples_proc_all = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, thin, lnprob_cutoff, flatten=False)
-                    kwargs_orig = _deepcopy(kwargs)
-                    for plot_uniqueid in plot_uniqueids:
-                        parameter_ind = list(adopt_uniqueids).index(plot_uniqueid)
-                        _, index = _extract_index_from_string(plot_uniqueid)
-                        yparam = fitted_ps.get_parameter(uniqueid=plot_uniqueid, **_skip_filter_checks)
+                            if np.all(np.isnan(lnp)):
+                                continue
 
-                        for walker_ind in range(samples_proc.shape[1]):
-                            kwargs = _deepcopy(kwargs_orig)
+                            kwargs = _deepcopy(kwargs_style)
+
+                            kwargs['y'] = lnp
 
                             if c is None:
                                 pass
@@ -5069,19 +5037,196 @@ class ParameterSet(object):
                                 # assume named color?
                                 kwargs['c'] = c
 
-                            # this needs to be the unflattened version
-                            samples_y = samples_proc[:, walker_ind, parameter_ind]
-
-                            kwargs['x'] = np.arange(len(samples_y), dtype=float)*thin+burnin
-                            kwargs['xlabel'] = 'iteration (burnin={}, thin={}, lnprob_cutoff={})'.format(burnin, thin, lnprob_cutoff)
-
-                            kwargs['y'] = samples_y
-                            kwargs['ylabel'] = _corner_label(yparam, index=index)
-                            # TODO: use fitted_units instead?
-                            kwargs['yunit'] = fitted_units[parameter_ind]
-
-                            # TODO: support for c = twig/lnprobabilities
+                            # TODO: support for c = twig
                             return_ += [kwargs]
+
+                elif style in ['trace', 'walks', 'trace_spread', 'spread_trace']:
+                    # official styles: trace, trace_spread
+                    kwargs_style = _deepcopy(kwargs_orig)
+                    kwargs_style['plot_package'] = 'autofig'
+                    if 'parameters' in kwargs.keys():
+                        raise ValueError("cannot currently plot {} while providing parameters.  Pass or set adopt_parameters to plot a subset of available parameters".format(style))
+                    kwargs_style['autofig_method'] = 'plot'
+                    kwargs_style.setdefault('marker', 'None')
+                    kwargs_style.setdefault('linestyle', 'solid')
+
+                    fitted_uniqueids = self._bundle.get_value(qualifier='fitted_uniqueids', context='solution', solution=ps.solution, **_skip_filter_checks)
+                    # fitted_twigs = self._bundle.get_value(qualifier='fitted_twigs', context='solution', solution=ps.solution, **_skip_filter_checks)
+                    fitted_units = self._bundle.get_value(qualifier='fitted_units', context='solution', solution=ps.solution, **_skip_filter_checks)
+                    fitted_ps = self._bundle.filter(uniqueid=list(fitted_uniqueids), **_skip_filter_checks)
+                    lnprobabilities_proc, samples_proc = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, thin, lnprob_cutoff, adopt_inds, flatten=False)
+
+                    # samples [niters, nwalkers, parameter]
+                    # allow user override of which parameter(s) to include
+                    # but in order to handle the possibility of indexes in array parameters
+                    # we need to find the matches in adopt_uniqueids which includes the index
+                    if kwargs_orig.get('y', None):
+                        ys = kwargs_orig.get('y')
+                        if isinstance(ys, str):
+                            ys = [ys]
+
+                        # ys are currently assumed to twigs (with or without indices)
+                        # we need a list of uniqueids, including indices when necessary
+                        def _uniqueids_for_y(fitted_ps, twig=None):
+                            y, index = _extract_index_from_string(twig)
+                            p = fitted_ps.get_parameter(twig=y, **_skip_filter_checks)
+                            if index is None:
+                                if p.__class__.__name__ == 'FloatArrayParameter':
+                                    return ['{}[{}]'.format(p.uniqueid, i) for i in range(len(p.get_value()))]
+                                else:
+                                    return [p.uniqueid]
+                            else:
+                                return ['{}[{}]'.format(p.uniqueid, index)]
+
+                        plot_uniqueids = []
+                        for y in ys:
+                            plot_uniqueids += _uniqueids_for_y(fitted_ps, y)
+
+                    else:
+                        plot_uniqueids = adopt_uniqueids
+
+                    if c is not None:
+                        _, samples_proc_all = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, thin, lnprob_cutoff, flatten=False)
+
+                    for plot_uniqueid in plot_uniqueids:
+                        kwargs = _deepcopy(kwargs_style)
+
+                        parameter_ind = list(adopt_uniqueids).index(plot_uniqueid)
+                        _, index = _extract_index_from_string(plot_uniqueid)
+                        yparam = fitted_ps.get_parameter(uniqueid=plot_uniqueid, **_skip_filter_checks)
+
+                        kwargs_style['x'] = np.arange(samples_proc.shape[0], dtype=float)*thin+burnin
+                        kwargs_style['xlabel'] = 'iteration (burnin={}, thin={}, lnprob_cutoff={})'.format(burnin, thin, lnprob_cutoff)
+
+                        kwargs_style['ylabel'] = _corner_label(yparam, index=index)
+                        # TODO: use fitted_units instead?
+                        kwargs_style['yunit'] = fitted_units[parameter_ind]
+
+                        if 'spread' in style:
+                            kwargs = _deepcopy(kwargs_style)
+                            if c is not None:
+                                kwargs['c'] = c if c not in ['lnprobablities'] + fitted_ps.qualifiers and '@' not in c else 'black'
+                            kwargs.setdefault('c', 'black')
+                            kwargs['y'] = np.median(samples_proc[:, :, parameter_ind], axis=1)
+
+                            spread_kwargs = _deepcopy(kwargs)
+                            sigma = kwargs.get('spread_sigma', 1)
+                            bounds = np.percentile(samples_proc[:, :, parameter_ind], 100 * _norm.cdf([-sigma, 0, sigma]), axis=1)
+                            spread_kwargs['autofig_method'] = 'fill_between'
+                            spread_kwargs['y'] = bounds.T
+                            spread_kwargs['alpha'] = 0.3
+                            return_ += [kwargs, spread_kwargs]
+
+                        else:
+                            for walker_ind in range(samples_proc.shape[1]):
+                                kwargs = _deepcopy(kwargs_style)
+
+                                if c is None:
+                                    pass
+                                elif c == 'lnprobabilities':
+                                    # we only need to get this once and can re-use it per-parameter/walker
+                                    kwargs['c'] = lnprobabilities_proc[:, walker_ind]
+                                    kwargs['clabel'] = _plural_to_singular_get(c)
+                                    kwargs['cqualifier'] = c
+                                elif len(fitted_ps.filter(twig=c, **_skip_filter_checks).to_list()):
+                                    match_params = fitted_ps.filter(twig=c, **_skip_filter_checks)
+                                    if len(match_params) > 1:
+                                        raise ValueError("c={} matches more than one valid parameter ({})".format(c, match_params.twigs))
+                                    match_param = match_params.get_parameter()
+                                    # TODO: allow to plot from outside adopt_parameters?
+                                    match_ind = list(fitted_uniqueids).index(match_param.uniqueid)
+                                    kwargs['c'] = samples_proc_all[:, walker_ind, match_ind]
+                                    kwargs['clabel'] = match_param.twig
+                                    kwargs['cqualifier'] = match_param.qualifier
+                                else:
+                                    # assume named color?
+                                    kwargs['c'] = c
+
+                                # this needs to be the unflattened version
+                                samples_y = samples_proc[:, walker_ind, parameter_ind]
+                                kwargs['y'] = samples_y
+
+                                # TODO: support for c = twig/lnprobabilities
+                                return_ += [kwargs]
+
+                elif style in ['acf', 'trace_acf', 'acf_trace', 'lnprobabilities_acf', 'acf_lnprobabilities']:
+                    # official style: trace_acf, lnprobabilities_acf
+                    kwargs_style = _deepcopy(kwargs_orig)
+                    nlags = ps.get_value(qualifier='nlags', nlags=kwargs.get('nlags', None), **_skip_filter_checks)
+
+                    kwargs_style['plot_package'] = 'autofig'
+                    if 'parameters' in kwargs.keys():
+                        raise ValueError("cannot currently plot {} while providing parameters.  Pass or set adopt_parameters to plot a subset of available parameters".format(style))
+                    kwargs_style['autofig_method'] = 'plot'
+                    kwargs_style.setdefault('marker', 'None')
+                    kwargs_style.setdefault('linestyle', 'solid')
+
+                    fitted_uniqueids = self._bundle.get_value(qualifier='fitted_uniqueids', context='solution', solution=ps.solution, **_skip_filter_checks)
+                    # fitted_twigs = self._bundle.get_value(qualifier='fitted_twigs', context='solution', solution=ps.solution, **_skip_filter_checks)
+                    fitted_units = self._bundle.get_value(qualifier='fitted_units', context='solution', solution=ps.solution, **_skip_filter_checks)
+                    fitted_ps = self._bundle.filter(uniqueid=list(fitted_uniqueids), **_skip_filter_checks)
+
+                    lnprobabilities_proc, samples_proc = _helpers.process_mcmc_chains(lnprobabilities, samples, burnin, 1, lnprob_cutoff, adopt_inds, flatten=False)
+                    if nlags == 0:
+                        nlags = samples_proc.shape[0]
+                    acf_proc, ci_b_proc, ci_proc = _helpers.process_acf(lnprobabilities_proc, samples_proc, nlags)
+                    # acf_proc [parameter, nwalkers, lag]
+                    # acf_b_proc [parameters, nwalkers, lag]
+                    # ci_proc (float)
+
+                    plot_uniqueids = adopt_uniqueids if 'lnprobabilities' not in style else [0]
+                    for plot_uniqueid in plot_uniqueids:
+                        if 'lnprobabilities' not in style:
+                            parameter_ind = list(adopt_uniqueids).index(plot_uniqueid)
+                            _, index = _extract_index_from_string(plot_uniqueid)
+                            yparam = fitted_ps.get_parameter(uniqueid=plot_uniqueid, **_skip_filter_checks)
+                        else:
+                            parameter_ind = -1  # to force the lnprobability in position 0
+
+                        nwalkers = acf_proc[parameter_ind+1].shape[0]
+                        for walker_ind in range(nwalkers):
+                            kwargs = _deepcopy(kwargs_style)
+
+                            if c is None:
+                                pass
+                            else:
+                                # assume named color?
+                                kwargs['c'] = c
+
+                            # this needs to be the unflattened version
+                            acf_y = acf_proc[parameter_ind+1][walker_ind, :]
+                            x = np.arange(len(acf_y), dtype=float)
+                            kwargs['x'] = x
+                            kwargs['xlabel'] = 'lag (nlags={}, burnin={}, lnprob_cutoff={})'.format(nlags, burnin, lnprob_cutoff)
+
+                            kwargs['y'] = acf_y
+                            kwargs['ylabel'] = 'normalized autocorrelation ({})'.format('lnprobabilities' if 'lnprobabilities' in style else _corner_twig(yparam, index=index))
+
+                            ci_b = ci_b_proc[parameter_ind+1][walker_ind, :]
+                            ci_b_fb = {'plot_package': 'autofig',
+                                       'autofig_method': 'fill_between',
+                                       'color': 'k',
+                                       'alpha': 0.5 / nwalkers,
+                                       'x': x,
+                                       'y':np.array([-1*ci_b,ci_b]).T}
+
+                            return_ += [kwargs, ci_b_fb]
+
+                        axhline_u =  {'plot_package': 'autofig',
+                                      'autofig_method': 'plot',
+                                      'color': 'k',
+                                      'linestyle': 'dashed',
+                                      'axhline': True,
+                                      'y': ci_proc}
+                        axhline_l =  {'plot_package': 'autofig',
+                                      'autofig_method': 'plot',
+                                      'color': 'k',
+                                      'linestyle': 'dashed',
+                                      'axhline': True,
+                                      'y': -ci_proc}
+
+                        return_ += [axhline_u, axhline_l]
+
                 else:
                     raise NotImplementedError()
 
@@ -5347,6 +5492,14 @@ class ParameterSet(object):
             will be raised.  Note: if a dataset uses compute_phases_t0 that differs
             from `t0`, this may result in a different mapping between
             `phase` and `time`.
+
+        * `style` (string, optional): applicable for plotting solutions only,
+            which style to use when plotting.  Valid styles for emcee include:
+            `lnprobabilities`, `trace`, `lnprobablities_spread` (also accepts
+            a `spread_sigma` which defaults to 1), `trace_spread` (also accepts
+            a `spread_sigma` which defaults to 1), `lnprobabilities_acf`, `trace_acf`,
+            `corner`, and `failed`.  Valid  styles for dynesty include: `trace`,
+            `run`, `corner`, and `failed`.
 
         * `x` (string/float/array, optional): qualifier/twig of the array to plot on the
             x-axis (will default based on the dataset-kind if not provided).
@@ -5715,7 +5868,7 @@ class ParameterSet(object):
 
                 elif plot_package == 'autofig':
                     y = plot_kwargs.get('y', [])
-                    axvline = plot_kwargs.pop('axvline', False)
+                    axvline = plot_kwargs.pop('axvline', False) or plot_kwargs.pop('axhline', False)
                     if axvline or (isinstance(y, u.Quantity) and isinstance(y.value, float)) or (hasattr(y, 'value') and isinstance(y.value, float)):
                         pass
                     elif not len(y):
@@ -8941,6 +9094,36 @@ class FloatParameter(Parameter):
         self._dict_fields = _meta_fields_all + self._dict_fields_other
 
     @property
+    def valid_units(self):
+        """
+        List valid units that can be converted from <phoebe.parameters.FloatParameter.default_unit>
+
+        See also:
+        * <phoebe.parameters.FloatParameter.default_unit>
+        * <phoebe.parameters.FloatParameter.set_default_unit>
+
+        Returns
+        -----------
+        * (list)
+        """
+
+        return self.get_valid_units()
+
+    def get_valid_units(self):
+        """
+        List valid units that can be converted from <phoebe.parameters.FloatParameter.default_unit>
+
+        See also:
+        * <phoebe.parameters.FloatParameter.default_unit>
+        * <phoebe.parameters.FloatParameter.set_default_unit>
+
+        Returns
+        -----------
+        * (list)
+        """
+        return self.default_unit.find_equivalent_units()
+
+    @property
     def default_unit(self):
         """
         Return the default unit for the <phoebe.parameters.FloatParameter>.
@@ -9418,8 +9601,6 @@ class FloatParameter(Parameter):
         types.  See the documentation of <phoebe.parameters.FloatParameter.get_quantity>
         for full details.
         """
-        default = super(FloatParameter, self).get_value(**kwargs)
-        if default is not None: return self._check_type(default)
         quantity = self.get_quantity(unit=unit, t=t,
                                      **kwargs)
         if hasattr(quantity, 'value'):
@@ -9460,9 +9641,8 @@ class FloatParameter(Parameter):
         default = super(FloatParameter, self).get_value(**kwargs) # <- note this is calling get_value on the Parameter object
         if default is not None:
             value = self._check_type(default)
-            if isinstance(default, u.Quantity):
-                return value
-            return value * self.default_unit
+            if not isinstance(value, u.Quantity):
+                value = value * self.default_unit
         else:
             value = self._value
 
@@ -9551,6 +9731,12 @@ class FloatParameter(Parameter):
     def _check_type(self, value):
         # we do this separately so that FloatArrayParameter can keep this set_value
         # and just subclass _check_type
+        if isinstance(value, tuple) and len(value)==2 and (isinstance(value[0], float) or isinstance(value[0], int)):
+            if isinstance(value[1], str):
+                value = value[0] * u.Unit(value[1])
+            elif isinstance(value[1], u.Unit):
+                value = value[0] * value[1]
+
         if isinstance(value, u.Quantity):
             if not (isinstance(value.value, float) or isinstance(value.value, int)):
                 raise ValueError("value could not be cast to float")
@@ -10233,7 +10419,11 @@ class ArrayParameter(Parameter):
         self._readonly_check(**kwargs)
 
         _orig_value = _deepcopy(self._value)
-        self._value = np.array(value)
+        if self.qualifier in ['mask_phases', 'fitted_values', 'initial_values']:
+            # avoid the ragged sequence deprecation warning
+            self._value = np.asarray(value, dtype=object)
+        else:
+            self._value = np.asarray(value)
 
 
 class HierarchyParameter(StringParameter):
@@ -11347,6 +11537,36 @@ class ConstraintParameter(Parameter):
             raise ValueError("no result found for {} in bundle after checking in {}".format(kwargs, vars.twigs))
 
     @property
+    def valid_units(self):
+        """
+        List valid units that can be converted from <phoebe.parameters.ConstraintParameter.default_unit>
+
+        See also:
+        * <phoebe.parameters.ConstraintParameter.default_unit>
+        * <phoebe.parameters.ConstraintParameter.set_default_unit>
+
+        Returns
+        -----------
+        * (list)
+        """
+
+        return self.get_valid_units()
+
+    def get_valid_units(self):
+        """
+        List valid units that can be converted from <phoebe.parameters.ConstraintParameter.default_unit>
+
+        See also:
+        * <phoebe.parameters.ConstraintParameter.default_unit>
+        * <phoebe.parameters.ConstraintParameter.set_default_unit>
+
+        Returns
+        -----------
+        * (list)
+        """
+        return self.default_unit.find_equivalent_units()
+
+    @property
     def default_unit(self):
         """
         Return the default unit for the <phoebe.parameters.ConstraintParameter>.
@@ -11898,6 +12118,9 @@ class ConstraintParameter(Parameter):
 
         # cannot be at the top, or will cause circular import
         from . import constraint
+        if self.constraint_func == 'custom':
+            raise NotImplementedError("custom constraints are not flippable (yet)")
+
         if self.constraint_func is not None and hasattr(constraint, self.constraint_func):
             # then let's see if the method is capable of resolving for use
             # try:
