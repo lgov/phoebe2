@@ -2624,6 +2624,9 @@ static PyObject *rotstar_misaligned_Omega_at_vol(PyObject *self, PyObject *args,
 
   auto fname = "rotstar_misaligned_Omega_at_vol"_s;
 
+  if (verbosity_level>=4)
+    report_stream << fname << "::START" << std::endl;
+
   //
   // Reading arguments
   //
@@ -2648,12 +2651,25 @@ static PyObject *rotstar_misaligned_Omega_at_vol(PyObject *self, PyObject *args,
     return NULL;
   }
 
+  if (verbosity_level>=4)
+    report_stream << fname
+      << "::vol= " << std::to_string(vol)
+      << " omega=" << std::to_string(omega) << std::endl;
+
+
   double Omega = rot_star::Omega_at_vol(vol, omega);
+
+  if (verbosity_level>=4)
+    report_stream << fname
+      << "::rot_star::Omega_at_vol, Omega= " << std::to_string(Omega) << std::endl;
 
   if (std::isnan(Omega)){
     raise_exception(fname + "::Problem determining Omega. See cerr outputs.");
     return NULL;
   }
+
+  if (verbosity_level>=4)
+    report_stream << fname << "::END" << std::endl;
 
   return PyFloat_FromDouble(Omega);
 }
@@ -3573,6 +3589,9 @@ static PyObject *rotstar_misaligned_gradOmega_only(PyObject *self, PyObject *arg
 
   auto fname = "rotstar_misaligned_gradOmega_only"_s;
 
+  if (verbosity_level>=4)
+    report_stream << fname << "::START" << std::endl;
+
   double p[5];
 
   PyObject *o_misalignment;
@@ -3588,8 +3607,6 @@ static PyObject *rotstar_misaligned_gradOmega_only(PyObject *self, PyObject *arg
     return NULL;
   }
 
-  Tmisaligned_rot_star<double> b(p);
-
   if (PyFloat_Check(o_misalignment)) {
 
     double s = std::sin(PyFloat_AsDouble(o_misalignment));
@@ -3604,9 +3621,21 @@ static PyObject *rotstar_misaligned_gradOmega_only(PyObject *self, PyObject *arg
     for (int i = 0; i < 3; ++i) p[i+1] = s[i];
   }
 
-  double g[3];
+  p[4] = 0;   // Omega0 = 0
 
-  b.grad_only((double*)PyArray_DATA(X), g);
+  Tmisaligned_rot_star<double> b(p);
+
+  double g[3], *r = (double*)PyArray_DATA(X);
+
+  if (verbosity_level>=4)
+    report_stream << fname + "::r=" << r[0] << '\t' << r[1] << '\t' <<  r[2] << '\n';
+
+  b.grad_only(r, g);
+
+  if (verbosity_level>=4) {
+    report_stream << fname + "::g=" << g[0] << '\t' << g[1] << '\t' <<  g[2] << '\n';
+    report_stream << fname << "::END" << std::endl;
+  }
 
   return PyArray_FromVector(3, g);
 }
@@ -3789,7 +3818,7 @@ static PyObject *roche_Omega(PyObject *self, PyObject *args) {
 
   Tgen_roche<double> b(p);
 
-  return PyFloat_FromDouble(-b.constrain((double*)PyArray_DATA(X)));
+  return PyFloat_FromDouble(-b.constraint((double*)PyArray_DATA(X)));
 }
 
 /*
@@ -3830,7 +3859,7 @@ static PyObject *rotstar_Omega(PyObject *self, PyObject *args) {
 
   Trot_star<double> b(p);
 
-  return PyFloat_FromDouble(-b.constrain((double*)PyArray_DATA(X)));
+  return PyFloat_FromDouble(-b.constraint((double*)PyArray_DATA(X)));
 }
 
 
@@ -3909,7 +3938,7 @@ static PyObject *rotstar_misaligned_Omega(PyObject *self, PyObject *args) {
 
   Tmisaligned_rot_star<double> b(p);
 
-  return PyFloat_FromDouble(-b.constrain((double*)PyArray_DATA(X)));
+  return PyFloat_FromDouble(-b.constraint((double*)PyArray_DATA(X)));
 }
 
 /*
@@ -4011,7 +4040,7 @@ static PyObject *roche_misaligned_Omega(PyObject *self, PyObject *args) {
       report_stream << fname << "::END" << std::endl;
 
     Tmisaligned_rotated_roche<double> b(p);
-    return PyFloat_FromDouble(-b.constrain(x));
+    return PyFloat_FromDouble(-b.constraint(x));
   } else if (PyArray_Check(o_misalignment) &&
     PyArray_TYPE((PyArrayObject *) o_misalignment) == NPY_DOUBLE) {
 
@@ -4026,7 +4055,7 @@ static PyObject *roche_misaligned_Omega(PyObject *self, PyObject *args) {
       report_stream << fname << "::END" << std::endl;
 
     Tmisaligned_roche<double> b(p);
-    return PyFloat_FromDouble(-b.constrain(x));
+    return PyFloat_FromDouble(-b.constraint(x));
   }
 
   if (verbosity_level>=4)
@@ -4048,7 +4077,7 @@ static PyObject *roche_misaligned_Omega(PyObject *self, PyObject *args) {
 
     Omega(x,y,z) =  1/r1 + q [1/r2 - x/delta^2] + 1/2 F^2(1 + q) (x^2 + y^2)
     r1 = sqrt(x^2 + y^2 + z^2)
-    r1 = sqrt((x-delta)^2 + y^2 + z^2)
+    r2 = sqrt((x-delta)^2 + y^2 + z^2)
 
   Python:
 
@@ -4313,7 +4342,10 @@ static PyObject *roche_marching_mesh(PyObject *self, PyObject *args, PyObject *k
       raise_exception("There are too many triangles!");
       return NULL;
     case 2:
-      raise_exception("Projections are failing!");
+      raise_exception("Projections are failing in marching!");
+      return NULL;
+     case 3:
+      raise_exception("Projections are failing in creating front polygon!");
       return NULL;
   }
 
@@ -4450,10 +4482,18 @@ static PyObject *roche_marching_mesh(PyObject *self, PyObject *args, PyObject *k
       centers: boolean, default False
       cnormals: boolean, default False
       cnormgrads: boolean, default False
+
       init_phi: float, default 0
-        orientation of the initial polygon front
+        shift in angles on the initial frontal polygon used in both choices of
+        creating initial frontal polygon
+
       init_dir: 1-rank numpy array of floats = [theta, phi], default [0,0]
         direction of the initial point in marching given by spherical angles
+
+      init_front: integer, default 1
+        chosing the way to create initial frontal polygin
+        0 - start marching meshing from single point determined by init_dir
+        1 - start marching meshing from the equator and use mirror symmetry
 
   Returns:
 
@@ -4542,12 +4582,14 @@ static PyObject *rotstar_marching_mesh(PyObject *self, PyObject *args, PyObject 
     (char*)"volume",
     (char*)"init_phi",
     (char*)"init_dir",
+    (char*)"init_front",
     NULL};
 
   double omega, Omega0, delta,
          init_phi = 0, init_dir[2] = {0., 0.};
 
-  int max_triangles = 10000000; // 10^7
+  int max_triangles = 10000000, // 10^7
+      init_front = 1;           // default choice
 
   bool
     b_full = true,
@@ -4581,7 +4623,7 @@ static PyObject *rotstar_marching_mesh(PyObject *self, PyObject *args, PyObject 
   PyArrayObject *o_init_dir = 0;
 
   if (!PyArg_ParseTupleAndKeywords(
-      args, keywds,  "ddd|iO!O!O!O!O!O!O!O!O!O!O!O!dO!", kwlist,
+      args, keywds,  "ddd|iO!O!O!O!O!O!O!O!O!O!O!O!dO!i", kwlist,
       &omega, &Omega0, &delta, // neccesary
       &max_triangles,
       &PyBool_Type, &o_full,
@@ -4597,7 +4639,8 @@ static PyObject *rotstar_marching_mesh(PyObject *self, PyObject *args, PyObject 
       &PyBool_Type, &o_area,
       &PyBool_Type, &o_volume,
       &init_phi,
-      &PyArray_Type, &o_init_dir)
+      &PyArray_Type, &o_init_dir,
+      &init_front)
   ){
     raise_exception(fname + "::Problem reading arguments");
     return NULL;
@@ -4625,6 +4668,16 @@ static PyObject *rotstar_marching_mesh(PyObject *self, PyObject *args, PyObject 
   }
 
   //
+  // Checking the choice of generating initial polygons
+  //
+  if ( init_front != 0 && init_front != 1) {
+    raise_exception(fname +
+      "::This choice of generating frontal polygons is not supported! "+
+      "init_front=" + std::to_string(init_front));
+    return NULL;
+  }
+
+  //
   // Check if the lobe exists
   //
   if (27*utils::sqr(omega)/(8*utils::cube(Omega0)) > 1){
@@ -4640,24 +4693,16 @@ static PyObject *rotstar_marching_mesh(PyObject *self, PyObject *args, PyObject 
   PyObject *results = PyDict_New();
 
   //
-  // Getting initial meshing point
+  // Observables that will be computed
   //
+  std::vector<T3Dpoint<double>> V, NatV;
+  std::vector<T3Dpoint<int>> Tr;
+  std::vector<double> *GatV = 0;
 
-  if (verbosity_level>=4)
-    report_stream << fname << "::Point on surface" << std::endl;
-
-  double r[3], g[3];
-  //rot_star::meshing_start_point(r, g, Omega0, omega);
-  rot_star::point_on_surface(Omega0, omega, init_dir[0], init_dir[1], r, g);
-
-  if (verbosity_level>=4)
-    report_stream << fname
-      << "::r=" << r[0] << " " << r[1] << " " << r[2]
-      << "g=" << g[0] << " " << g[1] << " " << g[2]
-      << std::endl;
+  if (b_vnormgrads) GatV = new std::vector<double>;
 
   //
-  //  Marching triangulation of the Roche lobe
+  //  Marching triangulation of the Rotstar lobe
   //
 
   if (verbosity_level>=4)
@@ -4665,27 +4710,174 @@ static PyObject *rotstar_marching_mesh(PyObject *self, PyObject *args, PyObject 
 
   double params[3] = {omega, Omega0};
 
-  Tmarching<double, Trot_star<double>> march(params);
+  using Tm = Tmarching<double, Trot_star<double>>;
 
-  std::vector<T3Dpoint<double>> V, NatV;
-  std::vector<T3Dpoint<int>> Tr;
-  std::vector<double> *GatV = 0;
+  Tm march(params);
 
-  if (b_vnormgrads) GatV = new std::vector<double>;
+  double r[3], g[3];
 
-  int error =
+  //
+  // Prepare initial front polygon
+  //
+
+  const int max_iter = 100;   // maximal number of interation in projections
+
+  int mP = 0,                // size of initial front
+      error = 0;
+
+  march.precision = false;    // start with normal precision
+
+  Tm::Tfront_polygon P;       // list of front polygons (circular list)
+
+  if (init_front == 0) {       // Inital frontal polygon is around a point
+
+    if (verbosity_level>=4)
+      report_stream << fname << "::Frontal poygon around a point on surface" << std::endl;
+
+     rot_star::point_on_surface(Omega0, omega, init_dir[0], init_dir[1], r, g);
+
+    if (verbosity_level>=4)
+      report_stream << fname
+        << "::r=" << r[0] << " " << r[1] << " " << r[2]
+        << "  g=" << g[0] << " " << g[1] << " " << g[2]
+        << std::endl;
+
+    // error = 0,1, 0 == OK
+    error = march.create_front(delta, r, g, init_phi, V, NatV, Tr, GatV, P, max_iter);
+
+    if (error != 0) error = 3;
+    mP = P.size();  // to remove -Wmaybe-uninitialized compiler warnings
+
+  } else if (init_front == 1) {  // Inital frontal polygon is around equator
+
+    if (verbosity_level>=4)
+      report_stream << fname << "::Frontal poygon around equator" << std::endl;
+
+    double R, circ, dphi, s, c, g0;
+
+    Tm::Tvertex v;
+
+    R = rot_star::equator(Omega0, omega);   // equator
+
+    if (verbosity_level>=4)
+      report_stream << fname << "::Equator=" + std::to_string(R) << std::endl;
+
+    if (std::isnan(R)){
+      error = 3;
+    } else {
+
+      circ = utils::m_2pi*R;                  // circumference
+
+      mP = std::round(circ/delta);            // approximate number of segments on circ.
+
+      dphi = utils::m_2pi/mP;
+
+      g0 = 1/utils::sqr(R) - utils::sqr(omega)*R;  // gradient of constraint = Omega0 - Omega(r)
+
+      for (int i = 0; i < mP; ++i) {
+
+        utils::sincos(dphi*i + init_phi, &s, &c);
+
+        r[0] = R*c;
+        r[1] = R*s;
+        r[2] = 0;
+
+        g[0] = c;
+        g[1] = s;
+        g[2] = 0;
+
+        march.create_internal_vertex(r, g, v, 0, false);
+
+        v.index = i;
+        v.omega_changed = true;
+        P.push_back(v);
+
+        V.emplace_back(v.r);                    // saving only r
+        if (GatV) GatV->emplace_back(g0);       // saving norm
+        NatV.emplace_back(v.b[2]);              // saving only normal
+      }
+    }
+  } else {
+    raise_exception(fname + "::You should not be here!");
+    return NULL;
+  }
+
+  if (error == 0) {
+
+    if (verbosity_level>=4)
+      report_stream
+        << fname
+        << "::Frontal poygon size mP=" << std::to_string(mP)
+        << std::endl;
+
+    //
+    // Do marching using initial front
+    // - error = 0,1,2
+    //
+
+    if (verbosity_level>=4)
+    report_stream
+      << fname
+      << "::Doing marching, version=" + std::string(b_full ? "v2" : "v1")
+      << std::endl;
+
+    error =
     (b_full ?
-      march.triangulize_full_clever(r, g, delta, max_triangles, V, NatV, Tr, GatV, init_phi) :
-      march.triangulize(r, g, delta, max_triangles, V, NatV, Tr, GatV, init_phi)
+      march.do_marching_v2(delta, P, V, NatV, Tr, GatV, max_triangles, max_iter) :
+      march.do_marching_v1(delta, P, V, NatV, Tr, GatV, max_triangles, max_iter)
     );
+  }
 
   switch(error) {
     case 1:
-      raise_exception("There are too many triangles!");
+      raise_exception(fname + "::There are too many triangles!");
       return NULL;
     case 2:
-      raise_exception("Projections are failing!");
+      raise_exception(fname + "::Projections are failing in marching!");
       return NULL;
+    case 3:
+      raise_exception(fname + "::Failed creating initial frontal polygon!");
+      return NULL;
+  }
+
+  //
+  // By using equatoral initial polygon, we need to mirror the points
+  //
+
+  if (init_front == 1) {
+
+    int nv0 = V.size(),
+        nv1 = nv0 - mP,
+        dim = nv0 + nv1,
+        nt = Tr.size();
+
+    Tr.resize(2*nt);
+    V.resize(dim);
+    NatV.resize(dim);
+    if (GatV) GatV->resize(dim);
+
+    int *t;
+
+    auto index = [&](int i) { return i < mP ? i : i + nv1;};
+
+    // create triangles of opposite hemisphere
+    for (int i = 0, j = nt; i < nt; ++i, ++j){
+      t = Tr[i].data;
+      Tr[j].assign(index(t[2]), index(t[1]), index(t[0]));
+    }
+
+    double *v;
+
+    // create new vertices apart of initial front on the opposite hemisphere
+    for (int i = mP, j = nv0; i < nv0; ++i, ++j){
+      v = V[i].data;
+      V[j].assign(v[0], v[1], -v[2]);
+
+      v = NatV[i].data;
+      NatV[j].assign(v[0], v[1], -v[2]);
+
+      if (GatV) (*GatV)[j] = (*GatV)[i];
+    }
   }
 
   if (verbosity_level >= 4)
@@ -4845,9 +5037,17 @@ static PyObject *rotstar_marching_mesh(PyObject *self, PyObject *args, PyObject 
       cnormals: boolean, default False
       cnormgrads: boolean, default False
       init_phi: float, default 0
-        orientation of the initial polygon front
+        shift in angles on the initial frontal polygon used in both choices of
+        creating initial frontal polygon
+
       init_dir: 1-rank numpy array of floats = [theta, phi], default [0,0]
         direction of the initial point in marching given by spherical angles
+
+
+      init_front: integer, default 1
+        chosing the way to create initial frontal polygin
+        0 - start marching meshing from single point
+        1 - start marching meshing from the equator and use mirror symmetry
 
   Returns:
 
@@ -4937,12 +5137,15 @@ static PyObject *rotstar_misaligned_marching_mesh(PyObject *self, PyObject *args
     (char*)"volume",
     (char*)"init_phi",
     (char*)"init_dir",
+    (char*)"init_front",
     NULL};
 
   double omega, Omega0, delta,
          init_phi = 0, init_dir[2] = {0., 0.};
 
-  int max_triangles = 10000000; // 10^7
+  int
+    max_triangles = 10000000, // 10^7
+    init_front = 1;           // choice of generating initial polygon
 
   bool
     b_full = true,
@@ -4978,7 +5181,7 @@ static PyObject *rotstar_misaligned_marching_mesh(PyObject *self, PyObject *args
   PyArrayObject *o_init_dir = 0;
 
   if (!PyArg_ParseTupleAndKeywords(
-      args, keywds,  "dOdd|iO!O!O!O!O!O!O!O!O!O!O!O!dO!", kwlist,
+      args, keywds,  "dOdd|iO!O!O!O!O!O!O!O!O!O!O!O!dO!i", kwlist,
       &omega, &o_misalignment, &Omega0, &delta, // neccesary
       &max_triangles,
       &PyBool_Type, &o_full,
@@ -4994,7 +5197,8 @@ static PyObject *rotstar_misaligned_marching_mesh(PyObject *self, PyObject *args
       &PyBool_Type, &o_area,
       &PyBool_Type, &o_volume,
       &init_phi,
-      &PyArray_Type, &o_init_dir)
+      &PyArray_Type, &o_init_dir,
+      &init_front)
   ){
     raise_exception(fname + "::Problem reading arguments");
     return NULL;
@@ -5017,6 +5221,9 @@ static PyObject *rotstar_misaligned_marching_mesh(PyObject *self, PyObject *args
     init_dir[0] = p[0];
     init_dir[1] = p[1];
   }
+
+ if (verbosity_level>=4)
+    report_stream << fname << "::Omega=" << Omega0 << " omega=" << omega << " delta=" << delta << std::endl;
 
   //
   // Check if the lobe exists
@@ -5048,6 +5255,9 @@ static PyObject *rotstar_misaligned_marching_mesh(PyObject *self, PyObject *args
     return NULL;
   }
 
+ if (verbosity_level>=4)
+    report_stream << fname << "::spin=" << spin[0] << '\t' << spin[1] << '\t' << spin[2] << std::endl;
+
   //
   // Storing results in dictioonary
   // https://docs.python.org/2/c-api/dict.html
@@ -5055,42 +5265,230 @@ static PyObject *rotstar_misaligned_marching_mesh(PyObject *self, PyObject *args
 
   PyObject *results = PyDict_New();
 
-  //
-  // Getting initial meshing point
-  //
-
-  double r[3], g[3];
-  //rot_star::meshing_start_point(r, g, Omega0, omega);
-  rot_star::point_on_surface(Omega0, omega, spin, init_dir[0], init_dir[1], r, g);
-
-  //
-  //  Marching triangulation of the Roche lobe
-  //
-
-  double params[5] = {omega, spin[0], spin[1], spin[2], Omega0};
-
-  Tmarching<double, Tmisaligned_rot_star<double>> march(params);
-
   std::vector<T3Dpoint<double>> V, NatV;
   std::vector<T3Dpoint<int>> Tr;
   std::vector<double> *GatV = 0;
 
   if (b_vnormgrads) GatV = new std::vector<double>;
 
+  //
+  //  Marching triangulation of the misaligned rotstar lobe
+  //
 
-  int error =(b_full ?
+  int error = 0;
+
+  double params[5] = {omega, spin[0], spin[1], spin[2], Omega0};
+
+  Tmarching<double, Tmisaligned_rot_star<double>> march(params);
+
+  if (init_front == 0) {       // Inital frontal polygon is around a point
+
+    if (verbosity_level>=4)
+      report_stream << fname << "::Frontal poygon around a point on surface" << std::endl;
+
+    //
+    // Getting initial meshing point
+    //
+
+    if (verbosity_level>=4)
+      report_stream << fname << "::Determining the initial point" << std::endl;
+
+    double r[3], g[3];
+
+    rot_star::point_on_surface(Omega0, omega, spin, init_dir[0], init_dir[1], r, g);
+
+    if (verbosity_level>=4)
+      report_stream << fname
+        << "::r=" << r[0] << ' ' << r[1] << ' ' << r[2]
+        << "  g=" << g[0] << ' ' << g[1] << ' ' << g[2] << '\n';
+
+    //
+    // Do marching
+    //
+
+    if (verbosity_level>=4)
+      report_stream
+        << fname
+        << "::Doing marching, version=" + std::string(b_full ? "full_clever" : "normal")
+        << std::endl;
+
+    // error = 0,1,2,3, 0 == OK
+    error = (b_full ?
       march.triangulize_full_clever(r, g, delta, max_triangles, V, NatV, Tr, GatV, init_phi):
       march.triangulize(r, g, delta, max_triangles, V, NatV, Tr, GatV, init_phi)
       );
 
+  } else if (init_front == 1) {  // Inital frontal polygon is around equator
+
+    if (verbosity_level>=4)
+      report_stream << fname << "::Frontal poygon around equator of aligned case" << std::endl;
+
+    double params[3] = {omega, Omega0};
+
+    using Tm =  Tmarching<double, Trot_star<double>>;
+
+    Tm marchA(params);
+
+    //
+    // Prepare initial front polygon
+    //
+
+    const int max_iter = 100;   // maximal number of interation in projections
+
+    int mP = 0;                 // size of initial front
+
+    marchA.precision = false;    // start with normal precision
+
+    Tm::Tfront_polygon P;       // list of front polygons (circular list)
+
+    {
+      double r[3], g[3], R, circ, dphi, s, c, g0;
+
+      Tm::Tvertex v;
+
+      R = rot_star::equator(Omega0, omega);   // equator
+
+      if (verbosity_level>=4)
+          report_stream << fname << "::Equator=" + std::to_string(R) << std::endl;
+
+      if (std::isnan(R)) {
+        error = 3;
+      } else {
+        circ = utils::m_2pi*R;                  // circumference
+
+        mP = std::round(circ/delta);            // approximate number of segments on circ.
+
+        dphi = utils::m_2pi/mP;
+
+        g0 = 1/utils::sqr(R) - utils::sqr(omega)*R;  // gradient of constraint = Omega0 - Omega(r)
+
+        for (int i = 0; i < mP; ++i) {
+
+          utils::sincos(dphi*i + init_phi, &s, &c);
+
+          r[0] = R*c;
+          r[1] = R*s;
+          r[2] = 0;
+
+          g[0] = c;
+          g[1] = s;
+          g[2] = 0;
+
+          marchA.create_internal_vertex(r, g, v, 0, false);
+
+          v.index = i;
+          v.omega_changed = true;
+          P.push_back(v);
+
+          V.emplace_back(v.r);                    // saving only r
+          if (GatV) GatV->emplace_back(g0);       // saving norm
+          NatV.emplace_back(v.b[2]);              // saving only normal
+        }
+      }
+    }
+
+    if (error == 0) {
+
+      if (verbosity_level>=4)
+        report_stream
+          << fname
+          << "::Frontal poygon size mP=" << std::to_string(mP) << std::endl;
+
+      if (verbosity_level>=4)
+        report_stream
+          << fname
+          << "::Doing marching, version=" + std::string(b_full ? "v2" : "v1")
+          << std::endl;
+
+      //
+      // Do marching using initial front
+      //  - error = 0,1,2
+      error =
+        (b_full ?
+          marchA.do_marching_v2(delta, P, V, NatV, Tr, GatV, max_triangles, max_iter) :
+          marchA.do_marching_v1(delta, P, V, NatV, Tr, GatV, max_triangles, max_iter)
+        );
+    }
+
+    //
+    // By using equatoral initial polygon, we need to mirror the points
+    //
+    if (error == 0) {
+      int nv0 = V.size(),
+          nv1 = nv0 - mP,
+          dim = nv0 + nv1,
+          nt = Tr.size();
+
+      Tr.resize(2*nt);
+      V.resize(dim);
+      NatV.resize(dim);
+      if (GatV) GatV->resize(dim);
+
+      int *t;
+
+      auto index = [&](int i) { return i < mP ? i : i + nv1;};
+
+      // create triangles of opposite hemisphere
+      for (int i = 0, j = nt; i < nt; ++i, ++j){
+        t = Tr[i].data;
+        Tr[j].assign(index(t[2]), index(t[1]), index(t[0]));
+      }
+
+      double *v;
+
+      // create new vertices apart of initial front on the opposite hemisphere
+      for (int i = mP, j = nv0; i < nv0; ++i, ++j){
+        v = V[i].data;
+        V[j].assign(v[0], v[1], -v[2]);
+
+        v = NatV[i].data;
+        NatV[j].assign(v[0], v[1], -v[2]);
+
+        if (GatV) (*GatV)[j] = (*GatV)[i];
+      }
+    }
+
+    //
+    // Do rotation of all the point so the direction of the pole matches spin
+    //  spin = (sin(theta)cos(phi), sin(theta) sin(phi), cos(theta))
+    // Rotation matrix
+    //  mat = R_z(phi) R_y(theta)
+    // with
+    //  Rz[t_] := {{Cos[t], -Sin[t], 0}, {Sin[t], Cos[t], 0}, {0, 0, 1}};
+    //  Rx[t_] := {{1, 0, 0}, {0, Cos[t], -Sin[t]}, {0, Sin[t], Cos[t]}};
+    //  Ry[t_] := {{Cos[t], 0, Sin[t]}, {0, 1, 0}, {-Sin[t], 0, Cos[t]}};
+    {
+      double
+        ct = spin[2],
+        st = std::sqrt(1 - ct*ct),
+        cp = (st == 0 ? 1 : spin[0]/st),
+        sp = (st == 0 ? 0 : spin[1]/st),
+        mat[3][3] = {{cp*ct, -sp, cp*st}, {ct*sp, cp, sp*st}, {-st, 0, ct}};
+
+      for (int i = 0; i < (int)V.size(); ++i){
+        utils::dot3D(mat, V[i].data);
+        utils::dot3D(mat, NatV[i].data);
+      }
+    }
+  } else {
+    raise_exception(fname + "::You should not be here!");
+    return NULL;
+  }
+
   switch(error) {
     case 1:
-      raise_exception("There are too many triangles!");
+      raise_exception(fname + "::There are too many triangles!");
       return NULL;
     case 2:
-      raise_exception("Projections are failing!");
+      raise_exception(fname + "::Projections are failing in marching!");
+      return NULL;
+    case 3:
+      raise_exception(fname + "::Failed creating initial frontal polygon!");
       return NULL;
   }
+
+  if (verbosity_level >= 4)
+    report_stream << fname << "::Outputing" << std::endl;
 
   //
   // Calculate the mesh properties
@@ -5234,7 +5632,15 @@ static PyObject *rotstar_misaligned_marching_mesh(PyObject *self, PyObject *args
       centers: boolean, default False
       cnormals: boolean, default False
       cnormgrads: boolean, default False
+
       init_phi: float, default 0
+        shift in angles on the initial frontal polygon used in both choices of
+        creating initial frontal polygon
+
+      init_front: integer, default 1
+        chosing the way to create initial frontal polygin
+        0 - start marching meshing from single pont = pole
+        1 - start marching meshing from the equator and use mirror symmetry
 
   Returns:
 
@@ -5318,12 +5724,14 @@ static PyObject *sphere_marching_mesh(PyObject *self, PyObject *args, PyObject *
     (char*)"area",
     (char*)"volume",
     (char*)"init_phi",
+    (char*)"init_front",
     NULL};
 
   double Omega0, delta,
          init_phi = 0;
 
-  int max_triangles = 10000000; // 10^7
+  int max_triangles = 10000000, // 10^7
+      init_front = 1;           // default choice for initial frontal polygon
 
   bool
     b_full = true,
@@ -5355,7 +5763,7 @@ static PyObject *sphere_marching_mesh(PyObject *self, PyObject *args, PyObject *
     *o_volume = 0;
 
   if (!PyArg_ParseTupleAndKeywords(
-      args, keywds,  "dd|iO!O!O!O!O!O!O!O!O!O!O!O!d", kwlist,
+      args, keywds,  "dd|iO!O!O!O!O!O!O!O!O!O!O!O!di", kwlist,
       &Omega0, &delta,                  // neccesary
       &max_triangles,                   // optional ...
       &PyBool_Type, &o_full,
@@ -5370,7 +5778,8 @@ static PyObject *sphere_marching_mesh(PyObject *self, PyObject *args, PyObject *
       &PyBool_Type, &o_areas,
       &PyBool_Type, &o_area,
       &PyBool_Type, &o_volume,
-      &init_phi
+      &init_phi,
+      &init_front
       )) {
     raise_exception(fname + "::Problem reading arguments");
     return NULL;
@@ -5389,43 +5798,170 @@ static PyObject *sphere_marching_mesh(PyObject *self, PyObject *args, PyObject *
   if (o_area) b_area = PyObject_IsTrue(o_area);
   if (o_volume) b_volume = PyObject_IsTrue(o_volume);
 
+
+  if ( init_front != 0 && init_front != 1) {
+    raise_exception(fname +
+      "::This choice of generating frontal polygons is not supported! "+
+      "init_front=" + std::to_string(init_front));
+    return NULL;
+  }
+
   //
   // Storing results in dictioonary
   // https://docs.python.org/2/c-api/dict.html
   //
   PyObject *results = PyDict_New();
 
-
   //
-  //  Marching triangulation of the Roche lobe
+  // Observables that will be computed
   //
-
-  double R = 1/Omega0;
-
-  Tmarching<double, Tsphere<double> > march(&R);
-
-  double r[3], g[3];
-
-  march.init(r, g);
-
   std::vector<T3Dpoint<double>> V, NatV;
   std::vector<T3Dpoint<int>> Tr;
   std::vector<double> *GatV = 0;
 
-  int error =
+  //
+  //  Marching triangulation
+  //
+
+  double
+    R = 1/Omega0,
+    r[3], g[3];
+
+  using Tm = Tmarching<double, Tsphere<double> >;
+
+  Tm march(&R);
+
+  //
+  // Prepare initial front polygon (neglecting GatV as it is trivial for sphere)
+  //
+
+  const int max_iter = 100;   // maximal number of interation in projections
+
+  int mP,                     // size of initial front
+      error = 0;
+
+  march.precision = false;    // start with normal precision
+
+  Tm::Tfront_polygon P;       // list of front polygons (circular list)
+
+
+  if (init_front == 0) {
+
+    march.init(r, g);
+
+    error = march.create_front(delta, r, g, init_phi, V, NatV, Tr, 0, P, max_iter);
+
+    mP = P.size();  // to remove -Wmaybe-uninitialized compiler warnings
+
+  } else if (init_front == 1) {
+
+    double circ, dphi, s, c;
+
+    Tm::Tvertex v;
+
+    circ = utils::m_2pi*R;            // circumference
+
+    mP = std::round(circ/delta);      // approximate number of segments on circ.
+
+    dphi = utils::m_2pi/mP;
+
+    for (int i = 0; i < mP ; ++i) {
+
+      utils::sincos(dphi*i + init_phi, &s, &c);
+
+      // using constraint x^2 + y^2 + z^2 - R^2 = 0
+      r[0] = R*c;
+      r[1] = R*s;
+      r[2] = 0;
+
+      g[0] = c;
+      g[1] = s;
+      g[2] = 0;
+
+      march.create_internal_vertex(r, g, v, 0, false);
+
+      v.index = i;
+      v.omega_changed = true;
+      P.push_back(v);
+
+      V.emplace_back(v.r);                    // saving only r
+      NatV.emplace_back(v.b[2]);              // saving only normal
+    }
+  } else {
+    raise_exception(fname + "::You should not be here!");
+    return NULL;
+  }
+
+  if (verbosity_level>=4)
+    report_stream
+      << fname
+      << "::Doing marching, version=" + std::string(b_full ? "v2" : "v1")
+      << std::endl;
+
+  //
+  // Do marching using initial front
+  // - err = 0,1,2
+  // - neglecting GatV as it is trivial for sphere
+
+  if (error == 0)
+    error =
     (b_full ?
-      march.triangulize_full_clever(r, g, delta, max_triangles, V, NatV, Tr, GatV, init_phi) :
-      march.triangulize(r, g, delta, max_triangles, V, NatV, Tr, GatV, init_phi)
+      march.do_marching_v2(delta, P, V, NatV, Tr, 0, max_triangles, max_iter) :
+      march.do_marching_v1(delta, P, V, NatV, Tr, 0, max_triangles, max_iter)
     );
+
 
   switch(error) {
     case 1:
-      raise_exception("There are too many triangles!");
+      raise_exception(fname + "::There are too many triangles!");
       return NULL;
     case 2:
-      raise_exception("Projections are failing!");
+      raise_exception(fname + "::Projections are failing in marching!");
+      return NULL;
+    case 3:
+      raise_exception(fname + "::Projections are failing in creating initial frontal polygon!");
       return NULL;
   }
+
+  //
+  // For using equatoral initial polygon we need to mirror the points
+  //
+
+  if (init_front == 1) {
+
+    int nv0 = V.size(),
+        nv1 = nv0 - mP,
+        dim = nv0 + nv1,
+        nt = Tr.size();
+
+    Tr.resize(2*nt);
+    V.resize(dim);
+    NatV.resize(dim);
+
+    int *t;
+
+    auto index = [&](int i) { return i < mP ? i : i + nv1;};
+
+    // create triangles of opposite hemisphere
+    for (int i = 0, j = nt; i < nt; ++i, ++j){
+      t = Tr[i].data;
+      Tr[j].assign(index(t[2]), index(t[1]), index(t[0]));
+    }
+
+    double *v;
+
+    // create new vertices apart of initial front on the opposite hemisphere
+    for (int i = mP, j = nv0; i < nv0; ++i, ++j){
+      v = V[i].data;
+      V[j].assign(v[0], v[1], -v[2]);
+
+      v = NatV[i].data;
+      NatV[j].assign(v[0], v[1], -v[2]);
+    }
+  }
+
+  if (verbosity_level>=4)
+    report_stream << fname << "::Outputing" << std::endl;
 
   if (b_vnormgrads)
     GatV = new std::vector<double>(V.size(), Omega0*Omega0);
@@ -6147,13 +6683,13 @@ static PyObject *mesh_visibility(PyObject *self, PyObject *args, PyObject *keywd
     switch (fnv1a_32::hash(s)) {
 
       case "boolean"_hash32:
-        // N - normal of traingles
+        // N - normal of triangles
         triangle_mesh_visibility_boolean(view, V, T, N, M, W, H);
         break;
 
       case "linear"_hash32:
         // N - normals at vertices
-        triangle_mesh_visibility_linear(view, V, T, N, M, W, H);
+        triangle_mesh_visibility_linear_ver2(view, V, T, N, M, W, H);
         break;
     }
   }
@@ -7292,7 +7828,7 @@ static PyObject *mesh_radiosity_problem_nbody_convex(
       break;
 
       case "Horvat"_hash32:
-      	success = solve_radiosity_equation_Horvat_nbody(Fmat, R, F0, F);
+        success = solve_radiosity_equation_Horvat_nbody(Fmat, R, F0, F);
       break;
 
       default:
@@ -8998,7 +9534,7 @@ static PyObject *roche_square_grid(PyObject *self, PyObject *args, PyObject *key
 
           for (int i = 0; i < 3; ++i) r[i] = r0[i] + u[i]*L[i];
 
-          if (roche.constrain(r) <= 0) *m = 1;
+          if (roche.constraint(r) <= 0) *m = 1;
         }
 
   }
@@ -9618,23 +10154,171 @@ static PyObject *wd_readdata(PyObject *self, PyObject *args, PyObject *keywds) {
     return NULL;
   }
 
-  npy_intp planck_dims = wd_atm::N_planck, atm_dims = wd_atm::N_atm;
+  // prepare both data for tables
+  npy_intp dims[2] = {wd_atm::N_planck, wd_atm::N_atm};
+  std::string f[2] = {PyString_AsString(ofilename_planck),
+                      PyString_AsString(ofilename_atm)};
+  double *tables[2];
+  PyObject *py_tables[2];
+
+  for (int i = 0; i < 2; ++i) {
+    #if defined(USING_SimpleNewFromData)
+      tables[i] = new double [dims[i]];
+      py_tables[i] = PyArray_SimpleNewFromData(1, &dims[i], NPY_DOUBLE, tables[i]);
+      PyArray_ENABLEFLAGS((PyArrayObject *)py_tables[i], NPY_ARRAY_OWNDATA);
+    #else
+      py_tables[i] = PyArray_SimpleNew(1, &dims[i], NPY_DOUBLE);
+      tables[i] = (double*)PyArray_DATA((PyArrayObject *)py_tables[i]);
+    #endif
+  }
+
+  //
+  // Reading
+  //
+
+  int err[2];
+  for (int i = 0; i < 2; ++i)
+    err[i] = wd_atm::read_data<double>(f[i].c_str(), dims[i], tables[i]);
+
+  //
+  // Checks
+  //
+  std::string err_msg;
+  for (int i = 0; i < 2; ++i) {
+
+    int e = err[i];
+
+    if (e == -1)
+      err_msg += "\nProblem opening file: \""_s + f[i] + "\"."_s;
+    else if (e == -2)
+      err_msg += "\nFile:\""_s + f[i] + "\"likely does not exist."_s;
+    else if (e != dims[i])
+      err_msg += "\nWrong size read, len= "_s + std::to_string(e) +
+                " len_expected="_s + std::to_string(dims[i]);
+
+  }
+
+  if (err_msg.size() != 0) {
+    raise_exception(fname + "::Problem reading data." + err_msg);
+    for (int i = 0; i < 2; ++i) delete [] tables[i];
+    return NULL;
+  }
+
+  //
+  // Do transpose of atm table
+  //
+
+  wd_atm::transpose_atm_table(tables[1]);
+
+
+  //
+  // Returning results
+  //
+
+  PyObject *results = PyDict_New();
+  PyDict_SetItemStringStealRef(results, "planck_table", py_tables[0]);
+  PyDict_SetItemStringStealRef(results, "atm_table", py_tables[1]);
+
+  return results;
+}
+
+/*
+  C++ wrapper for Python code:
+
+    Reading expansion coefficients needed for calculation of
+    Planck function and atmospher via Wilson-Devinney routines.
+
+  Python:
+
+    dicts = wd_readdata_filter(filename_planck, filename_atm, ifil)
+
+  with arguments
+
+    filename_planck: string - filename containing expansion coef. for planck function
+    filename_atm: string - filename containing expansion coef. for atm function
+    ifil:  - ith filter  1,2, ..., 25
+
+  Returns: dictionary with keys
+
+    planck_table: coefficients for calculating Planck intensity for ith filter
+      1-rank numpy array of floats
+
+    atm_table: coefficients for calculating light intensity with atmospheres for ith filter
+      1-rank numpy array of floats
+
+  Minimalistic example:
+
+    import libphoebe as lph
+
+    planck="..../wd/atmcofplanck.dat"
+    atm="..../wd/atmcof.dat"
+
+    ifil = 1
+
+    d = lph.wd_readdata_filter(bytes(planck, encoding='utf8'), bytes(atm, encoding='utf8'), ifil)
+
+    print(d.keys())
+    for k in d.keys(): print(len(d[k]))
+
+    Output:
+
+    dict_keys(['planck_table', 'atm_table'])
+    50
+    10032
+*/
+
+static PyObject *wd_readdata_filter(PyObject *self, PyObject *args, PyObject *keywds) {
+
+  auto fname ="wd_readdata_filter"_s;
+
+  //
+  // Reading arguments
+  //
+
+  char *kwlist[] = {
+    (char*)"filename_planck",
+    (char*)"filename_atm",
+    (char*)"ifil",
+    NULL
+  };
+
+  PyObject *ofilename_planck, *ofilename_atm;
+  int ifil;
+
+  if (!PyArg_ParseTupleAndKeywords(
+      args, keywds,  "O!O!i", kwlist,
+      &PyString_Type, &ofilename_planck,
+      &PyString_Type, &ofilename_atm,
+      &ifil)
+      ) {
+
+    raise_exception(fname + "::Problem reading arguments");
+    return NULL;
+  }
+
+  npy_intp
+    dims[2] = { wd_atm::N_planck_per_filterter,
+                wd_atm::N_atm_per_filterter};
+
+  //
+  // Reserving space
+  //
 
   #if defined(USING_SimpleNewFromData)
   double
-    *planck_table = new double[wd_atm::N_planck],
-    *atm_table = new double[wd_atm::N_atm];
+    *planck_table = new double[dims[0]],
+    *atm_table = new double[dims[1]];
 
   PyObject
-    *py_planck = PyArray_SimpleNewFromData(1, &planck_dims, NPY_DOUBLE, planck_table),
-    *py_atm = PyArray_SimpleNewFromData(1, &atm_dims, NPY_DOUBLE, atm_table);
+    *py_planck = PyArray_SimpleNewFromData(1, &dims[0], NPY_DOUBLE, planck_table),
+    *py_atm = PyArray_SimpleNewFromData(1, &dims[1], NPY_DOUBLE, atm_table);
 
   PyArray_ENABLEFLAGS((PyArrayObject *)py_planck, NPY_ARRAY_OWNDATA);
   PyArray_ENABLEFLAGS((PyArrayObject *)py_atm, NPY_ARRAY_OWNDATA);
   #else
   PyObject
-    *py_planck = PyArray_SimpleNew(1, &planck_dims, NPY_DOUBLE),
-    *py_atm = PyArray_SimpleNew(1, &atm_dims, NPY_DOUBLE);
+    *py_planck = PyArray_SimpleNew(1, &dims[0], NPY_DOUBLE),
+    *py_atm = PyArray_SimpleNew(1, &dims[1], NPY_DOUBLE);
 
   double
     *planck_table = (double*)PyArray_DATA((PyArrayObject *)py_planck),
@@ -9645,16 +10329,39 @@ static PyObject *wd_readdata(PyObject *self, PyObject *args, PyObject *keywds) {
   // Reading
   //
 
-  int len[2] = {
-    wd_atm::read_data<double, wd_atm::N_planck>(PyString_AsString(ofilename_planck), planck_table),
-    wd_atm::read_data<double, wd_atm::N_atm>(PyString_AsString(ofilename_atm), atm_table)
+  std::string f[2] = {
+      PyString_AsString(ofilename_planck),
+      PyString_AsString(ofilename_atm)
+    };
+
+  int err[2] = {
+    wd_atm::read_planck_table(f[0].c_str(), ifil, planck_table),
+    wd_atm::read_atm_table(f[1].c_str(), ifil, atm_table)
   };
 
   //
   // Checks
   //
-  if (len[0] != wd_atm::N_planck || len[1] != wd_atm::N_atm) {
-    raise_exception(fname + "::Problem reading data");
+  std::string err_msg;
+
+  for (int i = 0; i < 2; ++i)
+    switch (err[i]) {
+      case -1 :
+        err_msg += "\nProblem opening the file \""_s + f[i] + "\"\n"_s;
+      break;
+
+      case -2 :
+        err_msg += "\nFile \""_s + f[i] + "\" probably does not exist.\n"_s;
+      break;
+
+      case -3:
+        err_msg += "\nFile \""_s + f[i] + "\" is wrong size. \n"_s +
+                   "Expected length="_s  + std::to_string(dims[i]) + "\n"_s;
+      break;
+    }
+
+  if (err_msg.size() != 0) {
+    raise_exception(fname + "::Problem reading data." + err_msg);
     delete [] planck_table;
     delete [] atm_table;
     return NULL;
@@ -9670,6 +10377,7 @@ static PyObject *wd_readdata(PyObject *self, PyObject *args, PyObject *keywds) {
 
   return results;
 }
+
 #if 0
 /*
   C++ wrapper for Python code:
@@ -9754,11 +10462,13 @@ static PyObject *wd_planckint(PyObject *self, PyObject *args, PyObject *keywds) 
     planck="..../wd/atmcofplanck.dat"
     atm="..../wd/atmcof.dat"
 
-    d = lph.wd_readdata(planck, atm)
+    d = lph.wd_readdata(bytes(planck, encoding='utf8'), bytes(atm, encoding='utf8'))
 
     temps = np.array([1000., 2000.])
 
-    print lph.wd_planckint(temps, 1, d["planck_table"])
+    ifil = 1
+
+    print(lph.wd_planckint(temps, ifil, d["planck_table"]))
 
     returns:
 
@@ -9881,9 +10591,156 @@ static PyObject *wd_planckint(PyObject *self, PyObject *args, PyObject *keywds) 
   raise_exception(fname + "::This type of temperature input is not supported");
   return NULL;
 }
-
-
 #endif
+
+
+/*
+  C++ wrapper for Python code:
+
+    Computing the logarithm of the Planck central intensity for a specific filter.
+    Works for temperatures in the range (500,500300) K.
+
+  Python:
+
+    result = wd_planckint_filter(t, ifil, planck_table)
+
+  Minimal testing script:
+
+    import libphoebe as lph
+    import numpy as np
+
+    planck="..../wd/atmcofplanck.dat"
+    atm="..../wd/atmcof.dat"
+
+    ifil = 1
+
+    d = lph.wd_readdata_filter(bytes(planck, encoding='utf8'), bytes(atm, encoding='utf8'), ifil)
+
+    temps = np.array([1000., 2000.])
+
+    print lph.wd_planckint_filter(temps, ifil, d["planck_table"])
+
+    returns:
+
+    [-0.28885608  8.45013452]
+
+  Input:
+
+  positional: necessary
+
+    t:  float - temperature or
+        1-rank numpy array of float - temperatures
+
+    ifil: integer - index of the filter 1,2, ...
+    planck_table: 1-rank numpy array of floats - array of coefficients for ifil-th filter
+
+  Return:
+
+    result :
+      ylog: float - log of Planck central intensity or
+      1- rank numpy array of floats - log of Planck central intensities
+
+    Note:
+      In the case of errors in calculations ylog/entry in numpy array is NaN.
+*/
+static PyObject *wd_planckint_filter(PyObject *self, PyObject *args, PyObject *keywds) {
+
+  auto fname = "wd_planckint_filter"_s;
+
+  //
+  // Reading arguments
+  //
+
+  char *kwlist[] = {
+    (char*)"t",
+    (char*)"ifil",
+    (char*)"planck_table",
+    NULL
+  };
+
+  int ifil;
+
+  PyObject *ot;
+
+  PyArrayObject *oplanck_table;
+
+  if (!PyArg_ParseTupleAndKeywords(
+        args, keywds, "OiO!", kwlist,
+        &ot, &ifil, &PyArray_Type, &oplanck_table)
+      ) {
+
+    raise_exception(fname + "::Problem reading arguments");
+
+    return NULL;
+  }
+
+  double *planck_table = (double*) PyArray_DATA(oplanck_table);
+
+  if (PyFloat_Check(ot)) { // argument if float
+
+    double ylog, t = PyFloat_AS_DOUBLE(ot);
+
+    //
+    //  Calculate ylog and return
+    //
+
+    if (wd_atm::planckint_onlylog_filter(t, planck_table, ylog))
+      return PyFloat_FromDouble(ylog);
+    else {
+      raise_exception(fname + "::Failed to calculate Planck central intensity");
+      return PyFloat_FromDouble(std::numeric_limits<double>::quiet_NaN());
+    }
+
+  } else if (
+    PyArray_Check(ot) &&
+    PyArray_TYPE((PyArrayObject *) ot) == NPY_DOUBLE
+    ) {  // argument is a numpy array of float(double)
+
+    int n = PyArray_DIM((PyArrayObject *)ot, 0);
+
+    if (n == 0) {
+      raise_exception(fname + "::Arrays of zero length");
+      return NULL;
+    }
+
+    double *t =  (double*) PyArray_DATA((PyArrayObject *)ot);
+
+    //
+    // Prepare space for results
+    //
+
+    npy_intp dims = n;
+
+    #if defined(USING_SimpleNewFromData)
+    double *results = new double [n];
+    PyObject *oresults = PyArray_SimpleNewFromData(1, &dims, NPY_DOUBLE, results);
+    PyArray_ENABLEFLAGS((PyArrayObject *)oresults, NPY_ARRAY_OWNDATA);
+    #else
+    PyObject *oresults = PyArray_SimpleNew(1, &dims, NPY_DOUBLE);
+    double *results = (double *)PyArray_DATA((PyArrayObject *)oresults);
+    #endif
+
+    //
+    //  Calculate ylog for an array
+    //
+
+    bool ok = true;
+
+    for (double *r = results, *r_e = r + n; r != r_e;  ++r, ++t)
+      if (!wd_atm::planckint_onlylog_filter(*t, planck_table, *r)) {
+        *r = std::numeric_limits<double>::quiet_NaN();
+        ok = false;
+      }
+
+    if (!ok)
+      raise_exception(fname + "::Failed to calculate Planck central intensity at least once");
+
+    return oresults;
+  }
+
+  raise_exception(fname + "::This type of temperature input is not supported");
+  return NULL;
+}
 
 #if 0
 /*
@@ -10215,6 +11072,255 @@ static PyObject *wd_atmint(PyObject *self, PyObject *args, PyObject *keywds) {
 #endif
 
 /*
+  C++ wrapper for Python code:
+
+    Calculation of logarithm the light intensity from a star with a certain
+    atmosphere model for a specific filter.
+
+  Python:
+
+    results = wd_atmint_filter(t, logg, abunin, ifil, planck_table, atm_table, <keywords>=<value>)
+
+  Input:
+
+  positional: necessary
+
+   t:float - temperature or
+     1-rank numpy array of floats - temperatures
+
+   logg:float - logarithm of surface gravity or
+        1-rank numpy array of floats - temperatures
+
+   abunin:float - abundance/metallicity
+          1-rank numpy of floats - abundances
+
+   ifil: integer - index of the filter 1,2, ...
+   planck_table: 1-rank numpy array of float - planck table for ifil -th filter
+   atm_table: 1-rank numpy array of float - atmospheres table for ifil -th filter
+
+  keywords: optional
+
+    return_abunin: boolean, default false
+    if allowed value of abunin should be returned
+
+  Return:
+
+    if t is float:
+      if return_abunin == true:
+        result : 1-rank numpy array of floats = [xintlog, abunin]
+      else
+        result: float = xintlog
+    else
+      if return_abunin == true:
+        result : 2-rank numpy array of float -- array of [xintlog, abunin]
+      else
+        result: 1-rank numpy array of floats -- xintlogs
+
+  with
+
+    xintlog - log of intensity
+    abunin -  allowed value nearest to the input value.
+*/
+static PyObject *wd_atmint_filter(PyObject *self, PyObject *args, PyObject *keywds) {
+
+  auto fname = "wd_atmint_filter"_s;
+
+  //
+  // Reading arguments
+  //
+
+  char *kwlist[] = {
+    (char*)"t",
+    (char*)"logg",
+    (char*)"abunin",
+    (char*)"ifil",
+    (char*)"planck_table",
+    (char*)"atm_table",
+    (char*)"return_abunin",
+    NULL
+  };
+
+  int ifil;
+
+  bool return_abunin = false;
+
+  PyObject *ot, *ologg, *oabunin, *oreturn_abunin = 0;
+
+  PyArrayObject *oplanck_table, *oatm_table;
+
+  if (!PyArg_ParseTupleAndKeywords(
+        args, keywds, "OOOiO!O!|O!", kwlist,
+        &ot, &ologg, &oabunin, &ifil,
+        &PyArray_Type, &oplanck_table,
+        &PyArray_Type, &oatm_table,
+        &PyBool_Type, &oreturn_abunin
+      )) {
+    raise_exception(fname + "::Problem reading arguments\n");
+    return NULL;
+  }
+
+  if (oreturn_abunin) return_abunin = PyBool_Check(oreturn_abunin);
+
+  //
+  // Check type of temperature argument and read them
+  //
+
+  double t, logg, abunin, *pt, *plogg, *pabunin;
+
+  int n = -2;
+
+  if (PyFloat_Check(ot)){
+    n = -1;
+    // arguments
+    t = PyFloat_AS_DOUBLE(ot),
+    logg = PyFloat_AS_DOUBLE(ologg),
+    abunin = PyFloat_AS_DOUBLE(oabunin);
+
+  } else if (
+    PyArray_Check(ot) &&
+    PyArray_TYPE((PyArrayObject *) ot) == NPY_DOUBLE
+  ) {
+
+    n = PyArray_DIM((PyArrayObject *)ot, 0);
+
+    if (n == 0) {
+      raise_exception(fname + "::Arrays are of zero length");
+      return NULL;
+    }
+
+    // arguments
+    pt = (double*)PyArray_DATA((PyArrayObject *)ot),
+    plogg = (double*)PyArray_DATA((PyArrayObject *)ologg),
+    pabunin = (double*)PyArray_DATA((PyArrayObject *)oabunin);
+
+  } else {
+    raise_exception(fname + "::This type of temperature input is not supported");
+    return NULL;
+  }
+
+  //
+  // Do calculations and storing it in PyObject
+  //
+
+  PyObject *oresults;
+
+  double *planck_table = (double*)PyArray_DATA(oplanck_table),
+         *atm_table = (double*)PyArray_DATA(oatm_table);
+
+  if (return_abunin) {   // returning also abundances
+
+    //
+    //  Calculate yintlog and abundance
+    //
+
+    if (n == -1){ // single calculation
+
+      // prepare numpy array to store the results
+      npy_intp dims = 2;
+
+      #if defined(USING_SimpleNewFromData)
+      double *r = new double[2];
+      oresults = PyArray_SimpleNewFromData(1, &dims, NPY_DOUBLE, r);
+      PyArray_ENABLEFLAGS((PyArrayObject *)oresults, NPY_ARRAY_OWNDATA);
+      #else
+      oresults = PyArray_SimpleNew(1, &dims, NPY_DOUBLE);
+      double *r = (double*)PyArray_DATA((PyArrayObject *)oresults);
+      #endif
+
+      r[1] = abunin;
+
+      // do calculation
+      if (!wd_atm::atmx_onlylog_filter(t, logg, r[1], ifil, planck_table, atm_table, r[0])) {
+        raise_exception(fname + "::Failed to calculate logarithm of intensity");
+        r[0] = std::numeric_limits<double>::quiet_NaN();
+      }
+
+    } else {  // calculation whole array
+
+
+      // prepare numpy array to store the results
+      npy_intp dims[2] = {n, 2};
+
+      #if defined(USING_SimpleNewFromData)
+      double *results = new  double [2*n]; // to store results
+      oresults = PyArray_SimpleNewFromData(2, dims, NPY_DOUBLE, results);
+      PyArray_ENABLEFLAGS((PyArrayObject *)oresults, NPY_ARRAY_OWNDATA);
+      #else
+      oresults = PyArray_SimpleNew(2, dims, NPY_DOUBLE);
+      double *results = (double*)PyArray_DATA((PyArrayObject *)oresults);
+      #endif
+
+      bool ok = true;
+      for (double *r = results, *r_e = r + 2*n; r != r_e; r += 2, ++pt, ++plogg, ++pabunin){
+
+        r[1] = *pabunin;
+
+        if (!wd_atm::atmx_onlylog_filter(*pt, *plogg, r[1], ifil, planck_table, atm_table, r[0])) {
+          r[0] = std::numeric_limits<double>::quiet_NaN();
+          ok = false;
+        }
+      }
+
+      if (!ok)
+        raise_exception(fname + "::Failed to calculate logarithm of intensity at least once");
+    }
+
+
+  } else {                    // returning only logarithm of intensities
+
+    //
+    //  Calculate yintlogs
+    //
+
+    if (n == -1){ // single calculation
+
+      double r; // log of intensity
+
+      if (wd_atm::atmx_onlylog_filter(t, logg, abunin, ifil, planck_table, atm_table, r))
+        oresults = PyFloat_FromDouble(r);
+      else {
+        raise_exception(fname + "::Failed to calculate logarithm of intensity");
+        oresults = PyFloat_FromDouble(std::numeric_limits<double>::quiet_NaN());
+      }
+
+    } else { // calculation whole array
+
+      // prepare numpy array to store the results
+      npy_intp dims = n;
+
+      #if defined(USING_SimpleNewFromData)
+      double *results = new double [n];
+      oresults = PyArray_SimpleNewFromData(1, &dims, NPY_DOUBLE, results);
+      PyArray_ENABLEFLAGS((PyArrayObject *)oresults, NPY_ARRAY_OWNDATA);
+      #else
+      oresults = PyArray_SimpleNew(1, &dims, NPY_DOUBLE);
+      double *results = (double*)PyArray_DATA((PyArrayObject *)oresults);
+      #endif
+
+      double tmp;
+
+      bool ok = true;
+
+      for (double *r = results, *r_e = r + n; r != r_e; ++r, ++pt, ++plogg, ++pabunin){
+
+        tmp = *pabunin;
+
+        if (!wd_atm::atmx_onlylog_filter(*pt, *plogg, tmp, ifil, planck_table, atm_table, *r)) {
+          *r = std::numeric_limits<double>::quiet_NaN();
+          ok = false;
+        }
+      }
+
+      if (!ok)
+        raise_exception(fname + "::Failed to calculate logarithm of intensity at least once");
+    }
+  }
+
+  return oresults;
+}
+
+
+/*
   C++ wrapper for python code:
 
     Multi-dimensional linear interpolation of gridded data. Gridded data
@@ -10355,10 +11461,10 @@ static PyObject *interp(PyObject *self, PyObject *args, PyObject *keywds) {
 
   #if defined(USING_SimpleNewFromData)
   double *R = new double [Nr];
-	PyObject *o_ret = PyArray_SimpleNewFromData(2, dims, NPY_DOUBLE, R);
+  PyObject *o_ret = PyArray_SimpleNewFromData(2, dims, NPY_DOUBLE, R);
   PyArray_ENABLEFLAGS((PyArrayObject *)o_ret, NPY_ARRAY_OWNDATA);
   #else
-	PyObject *o_ret = PyArray_SimpleNew(2, dims, NPY_DOUBLE);
+  PyObject *o_ret = PyArray_SimpleNew(2, dims, NPY_DOUBLE);
   double *R = (double *) PyArray_DATA((PyArrayObject *)o_ret);
   #endif
 
@@ -11924,6 +13030,27 @@ static PyMethodDef Methods[] = {
     METH_VARARGS|METH_KEYWORDS,
     "Calculating intensity for a given atmospheres at given temperatures,"
     "filter index and array of coefficients"},
+
+
+  // --------------------------------------------------------------------
+
+    { "wd_readdata_filter",
+    (PyCFunction)wd_readdata_filter,
+    METH_VARARGS|METH_KEYWORDS,
+    "Reading the file with WD coefficients for specific filter."},
+
+
+  { "wd_planckint_filter",
+    (PyCFunction)wd_planckint_filter,
+    METH_VARARGS|METH_KEYWORDS,
+    "Calculating Planck central intensity at given temperatures,"
+    "filter index and array of coefficients for specific filter."},
+
+  { "wd_atmint_filter",
+    (PyCFunction)wd_atmint_filter,
+    METH_VARARGS|METH_KEYWORDS,
+    "Calculating intensity for a given atmospheres at given temperatures,"
+    "filter index and array of coefficients for specific filter."},
 
 // --------------------------------------------------------------------
 
